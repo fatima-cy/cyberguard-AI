@@ -10,7 +10,7 @@ param budgetAmount int = 200
 param budgetStartDate string = '2026-07-01'
 param contactEmails array = ['fatima@cloudsecure.ai']
 
-// Hardening & Observability Parameters (§1)
+// Hardening & Observability Parameters
 param enablePurgeProtection bool = false
 param enableLocks bool = false
 param appServicePlanSku string = 'B1'
@@ -40,7 +40,7 @@ var aisearchName = 'cs-${environment}-search-${suffix}'
 var storageName = take('cs${environment}blob${suffix}', 24)
 var appconfigName = 'cs-${environment}-appconfig-${suffix}'
 var appserviceName = 'cs-${environment}-api-${suffix}'
-var insightsName = 'cs-${environment}-insights-${suffix}'
+var insightsBaseName = 'cs-${environment}-${suffix}'
 
 // 1. Create Resource Group
 resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
@@ -49,18 +49,19 @@ resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
   tags: tags
 }
 
-// 2. Deploy Log Analytics Workspace & App Insights (§1.3)
+// 2. Deploy Log Analytics + Application Insights first — other modules wire
+//    diagnostics into this workspace
 module insights 'modules/insights.bicep' = {
   scope: rg
   name: 'insights-deploy'
   params: {
-    name: insightsName
+    name: insightsBaseName
     location: location
     tags: tags
   }
 }
 
-// 3. Deploy Key Vault (with diagnostics + optional purge protection)
+// 3. Deploy Key Vault
 module kv 'modules/keyvault.bicep' = {
   scope: rg
   name: 'keyvault-deploy'
@@ -73,7 +74,7 @@ module kv 'modules/keyvault.bicep' = {
   }
 }
 
-// 4. Deploy Cosmos DB (with diagnostics)
+// 4. Deploy Cosmos DB
 module cosmos 'modules/cosmosdb.bicep' = {
   scope: rg
   name: 'cosmosdb-deploy'
@@ -95,6 +96,18 @@ module redis 'modules/redis.bicep' = {
     name: redisName
     location: location
     tags: tags
+  }
+}
+
+// 5a. Seed Redis primary key into Key Vault (interim until AAD-based Redis
+//     auth is adopted — tracked as a follow-up)
+module redisSecret 'modules/keyvault-secret.bicep' = {
+  scope: rg
+  name: 'redis-secret-deploy'
+  params: {
+    keyVaultName: kv.outputs.name
+    secretName: 'redis-primary-key'
+    secretValue: redis.outputs.primaryKey
   }
 }
 
@@ -131,7 +144,7 @@ module aisearch 'modules/aisearch.bicep' = {
   }
 }
 
-// 9. Deploy Blob Storage (with diagnostics + versioning + soft-delete)
+// 9. Deploy Blob Storage
 module storage 'modules/storage.bicep' = {
   scope: rg
   name: 'storage-deploy'
@@ -145,7 +158,7 @@ module storage 'modules/storage.bicep' = {
   }
 }
 
-// 10. Deploy App Configuration (parameterized SKU)
+// 10. Deploy App Configuration
 module appconfig 'modules/appconfig.bicep' = {
   scope: rg
   name: 'appconfig-deploy'
@@ -157,7 +170,7 @@ module appconfig 'modules/appconfig.bicep' = {
   }
 }
 
-// 11. Deploy App Service (Linux Web App with App Insights connected)
+// 11. Deploy App Service (Linux Web App)
 module appservice 'modules/appservice.bicep' = {
   scope: rg
   name: 'appservice-deploy'
@@ -185,8 +198,8 @@ module budgets 'modules/budgets.bicep' = {
   params: {
     budgetName: 'cs-${environment}-budget'
     amount: budgetAmount
-    contactEmails: contactEmails
     startDate: budgetStartDate
+    contactEmails: contactEmails
   }
 }
 
@@ -206,19 +219,12 @@ module roles 'modules/roles.bicep' = {
   }
 }
 
-// 14. Automate Seeding Redis Access Key to Key Vault (§1.2)
-module redisKeySecret 'modules/keyvault-secret.bicep' = {
+// 14. Resource Group lock — Staging/Prod only
+module rgLock 'modules/locks.bicep' = if (enableLocks) {
   scope: rg
-  name: 'redis-key-secret-deploy'
+  name: 'rg-lock-deploy'
   params: {
-    keyVaultName: kvName
-    secretName: 'redis-primary-key'
-    secretValue: redis.outputs.primaryKey
+    lockName: 'PreventDeletion-${environment}'
+    notes: 'Prevent accidental deletion of ${environment} resource group'
   }
-}
-
-// 15. Deploy Resource Group Locks for Production (conditionally §1.9)
-module locks 'modules/locks.bicep' = if (enableLocks) {
-  scope: rg
-  name: 'resource-group-lock'
 }
