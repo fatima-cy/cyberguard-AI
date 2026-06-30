@@ -1,11 +1,12 @@
 {
   "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "languageVersion": "2.0",
   "contentVersion": "1.0.0.0",
   "metadata": {
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "7956440548452008488"
+      "templateHash": "3417569466650992963"
     }
   },
   "parameters": {
@@ -89,15 +90,15 @@
     "appserviceName": "[format('cs-{0}-api-{1}', parameters('environment'), variables('suffix'))]",
     "insightsBaseName": "[format('cs-{0}-{1}', parameters('environment'), variables('suffix'))]"
   },
-  "resources": [
-    {
+  "resources": {
+    "rg": {
       "type": "Microsoft.Resources/resourceGroups",
       "apiVersion": "2021-04-01",
       "name": "[format('cs-{0}-rg', parameters('environment'))]",
       "location": "[parameters('location')]",
       "tags": "[variables('tags')]"
     },
-    {
+    "insights": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "insights-deploy",
@@ -196,10 +197,10 @@
         }
       },
       "dependsOn": [
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('cs-{0}-rg', parameters('environment')))]"
+        "rg"
       ]
     },
-    {
+    "kv": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "keyvault-deploy",
@@ -223,7 +224,7 @@
             "value": "[parameters('enablePurgeProtection')]"
           },
           "workspaceId": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'insights-deploy'), '2025-04-01').outputs.workspaceId.value]"
+            "value": "[reference('insights').outputs.workspaceId.value]"
           }
         },
         "template": {
@@ -318,11 +319,11 @@
         }
       },
       "dependsOn": [
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'insights-deploy')]",
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('cs-{0}-rg', parameters('environment')))]"
+        "insights",
+        "rg"
       ]
     },
-    {
+    "cosmos": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "cosmosdb-deploy",
@@ -349,7 +350,7 @@
             "value": "[parameters('secondaryLocation')]"
           },
           "workspaceId": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'insights-deploy'), '2025-04-01').outputs.workspaceId.value]"
+            "value": "[reference('insights').outputs.workspaceId.value]"
           }
         },
         "template": {
@@ -575,11 +576,11 @@
         }
       },
       "dependsOn": [
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'insights-deploy')]",
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('cs-{0}-rg', parameters('environment')))]"
+        "insights",
+        "rg"
       ]
     },
-    {
+    "redis": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "redis-deploy",
@@ -602,12 +603,13 @@
         },
         "template": {
           "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "languageVersion": "2.0",
           "contentVersion": "1.0.0.0",
           "metadata": {
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "5128990337635198807"
+              "templateHash": "2091760765986962231"
             }
           },
           "parameters": {
@@ -633,8 +635,8 @@
               "defaultValue": 0
             }
           },
-          "resources": [
-            {
+          "resources": {
+            "redis": {
               "type": "Microsoft.Cache/redis",
               "apiVersion": "2023-08-01",
               "name": "[parameters('name')]",
@@ -655,7 +657,7 @@
                 }
               }
             }
-          ],
+          },
           "outputs": {
             "id": {
               "type": "string",
@@ -667,24 +669,24 @@
             },
             "hostName": {
               "type": "string",
-              "value": "[reference(resourceId('Microsoft.Cache/redis', parameters('name')), '2023-08-01').hostName]"
+              "value": "[reference('redis').hostName]"
             },
             "sslPort": {
               "type": "int",
-              "value": "[reference(resourceId('Microsoft.Cache/redis', parameters('name')), '2023-08-01').sslPort]"
+              "value": "[reference('redis').sslPort]"
             },
             "primaryKey": {
-              "type": "string",
-              "value": "[listKeys(resourceId('Microsoft.Cache/redis', parameters('name')), '2023-08-01').primaryKey]"
+              "type": "securestring",
+              "value": "[listKeys('redis', '2023-08-01').primaryKey]"
             }
           }
         }
       },
       "dependsOn": [
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('cs-{0}-rg', parameters('environment')))]"
+        "rg"
       ]
     },
-    {
+    "redisSecret": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "redis-secret-deploy",
@@ -696,13 +698,13 @@
         "mode": "Incremental",
         "parameters": {
           "keyVaultName": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'keyvault-deploy'), '2025-04-01').outputs.name.value]"
+            "value": "[reference('kv').outputs.name.value]"
           },
           "secretName": {
             "value": "redis-primary-key"
           },
           "secretValue": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'redis-deploy'), '2025-04-01').outputs.primaryKey.value]"
+            "value": "[listOutputsWithSecureValues('redis', '2025-04-01').primaryKey]"
           }
         },
         "template": {
@@ -739,12 +741,12 @@
         }
       },
       "dependsOn": [
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'keyvault-deploy')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'redis-deploy')]",
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('cs-{0}-rg', parameters('environment')))]"
+        "kv",
+        "redis",
+        "rg"
       ]
     },
-    {
+    "servicebus": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "servicebus-deploy",
@@ -863,10 +865,10 @@
         }
       },
       "dependsOn": [
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('cs-{0}-rg', parameters('environment')))]"
+        "rg"
       ]
     },
-    {
+    "openai": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "openai-deploy",
@@ -980,10 +982,10 @@
         }
       },
       "dependsOn": [
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('cs-{0}-rg', parameters('environment')))]"
+        "rg"
       ]
     },
-    {
+    "aisearch": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "aisearch-deploy",
@@ -1063,10 +1065,10 @@
         }
       },
       "dependsOn": [
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('cs-{0}-rg', parameters('environment')))]"
+        "rg"
       ]
     },
-    {
+    "storage": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "storage-deploy",
@@ -1093,7 +1095,7 @@
             "value": "[parameters('enableBlobSoftDelete')]"
           },
           "workspaceId": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'insights-deploy'), '2025-04-01').outputs.workspaceId.value]"
+            "value": "[reference('insights').outputs.workspaceId.value]"
           }
         },
         "template": {
@@ -1226,11 +1228,11 @@
         }
       },
       "dependsOn": [
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'insights-deploy')]",
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('cs-{0}-rg', parameters('environment')))]"
+        "insights",
+        "rg"
       ]
     },
-    {
+    "appconfig": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "appconfig-deploy",
@@ -1308,10 +1310,10 @@
         }
       },
       "dependsOn": [
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('cs-{0}-rg', parameters('environment')))]"
+        "rg"
       ]
     },
-    {
+    "appservice": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "appservice-deploy",
@@ -1335,31 +1337,31 @@
             "value": "[parameters('appServicePlanSku')]"
           },
           "cosmosEndpoint": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'cosmosdb-deploy'), '2025-04-01').outputs.endpoint.value]"
+            "value": "[reference('cosmos').outputs.endpoint.value]"
           },
           "redisEndpoint": {
-            "value": "[format('{0}:{1}', reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'redis-deploy'), '2025-04-01').outputs.hostName.value, reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'redis-deploy'), '2025-04-01').outputs.sslPort.value)]"
+            "value": "[format('{0}:{1}', reference('redis').outputs.hostName.value, reference('redis').outputs.sslPort.value)]"
           },
           "serviceBusNamespace": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'servicebus-deploy'), '2025-04-01').outputs.endpoint.value]"
+            "value": "[reference('servicebus').outputs.endpoint.value]"
           },
           "openaiEndpoint": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'openai-deploy'), '2025-04-01').outputs.endpoint.value]"
+            "value": "[reference('openai').outputs.endpoint.value]"
           },
           "aiSearchEndpoint": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'aisearch-deploy'), '2025-04-01').outputs.endpoint.value]"
+            "value": "[reference('aisearch').outputs.endpoint.value]"
           },
           "blobEndpoint": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'storage-deploy'), '2025-04-01').outputs.blobEndpoint.value]"
+            "value": "[reference('storage').outputs.blobEndpoint.value]"
           },
           "keyVaultUri": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'keyvault-deploy'), '2025-04-01').outputs.uri.value]"
+            "value": "[reference('kv').outputs.uri.value]"
           },
           "appConfigEndpoint": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'appconfig-deploy'), '2025-04-01').outputs.endpoint.value]"
+            "value": "[reference('appconfig').outputs.endpoint.value]"
           },
           "appInsightsConnectionString": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'insights-deploy'), '2025-04-01').outputs.connectionString.value]"
+            "value": "[reference('insights').outputs.connectionString.value]"
           }
         },
         "template": {
@@ -1516,19 +1518,19 @@
         }
       },
       "dependsOn": [
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'aisearch-deploy')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'appconfig-deploy')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'cosmosdb-deploy')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'insights-deploy')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'keyvault-deploy')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'openai-deploy')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'redis-deploy')]",
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('cs-{0}-rg', parameters('environment')))]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'servicebus-deploy')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'storage-deploy')]"
+        "aisearch",
+        "appconfig",
+        "cosmos",
+        "insights",
+        "kv",
+        "openai",
+        "redis",
+        "rg",
+        "servicebus",
+        "storage"
       ]
     },
-    {
+    "budgets": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "budgets-deploy",
@@ -1611,10 +1613,10 @@
         }
       },
       "dependsOn": [
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('cs-{0}-rg', parameters('environment')))]"
+        "rg"
       ]
     },
-    {
+    "roles": {
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "rbac-roles-deploy",
@@ -1626,28 +1628,28 @@
         "mode": "Incremental",
         "parameters": {
           "principalId": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'appservice-deploy'), '2025-04-01').outputs.principalId.value]"
+            "value": "[reference('appservice').outputs.principalId.value]"
           },
           "cosmosAccountName": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'cosmosdb-deploy'), '2025-04-01').outputs.name.value]"
+            "value": "[reference('cosmos').outputs.name.value]"
           },
           "keyVaultName": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'keyvault-deploy'), '2025-04-01').outputs.name.value]"
+            "value": "[reference('kv').outputs.name.value]"
           },
           "storageAccountName": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'storage-deploy'), '2025-04-01').outputs.name.value]"
+            "value": "[reference('storage').outputs.name.value]"
           },
           "serviceBusName": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'servicebus-deploy'), '2025-04-01').outputs.name.value]"
+            "value": "[reference('servicebus').outputs.name.value]"
           },
           "openaiName": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'openai-deploy'), '2025-04-01').outputs.name.value]"
+            "value": "[reference('openai').outputs.name.value]"
           },
           "aisearchName": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'aisearch-deploy'), '2025-04-01').outputs.name.value]"
+            "value": "[reference('aisearch').outputs.name.value]"
           },
           "appconfigName": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'appconfig-deploy'), '2025-04-01').outputs.name.value]"
+            "value": "[reference('appconfig').outputs.name.value]"
           }
         },
         "template": {
@@ -1775,18 +1777,18 @@
         }
       },
       "dependsOn": [
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'aisearch-deploy')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'appconfig-deploy')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'appservice-deploy')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'cosmosdb-deploy')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'keyvault-deploy')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'openai-deploy')]",
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('cs-{0}-rg', parameters('environment')))]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'servicebus-deploy')]",
-        "[extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, format('cs-{0}-rg', parameters('environment'))), 'Microsoft.Resources/deployments', 'storage-deploy')]"
+        "aisearch",
+        "appconfig",
+        "appservice",
+        "cosmos",
+        "kv",
+        "openai",
+        "rg",
+        "servicebus",
+        "storage"
       ]
     },
-    {
+    "rgLock": {
       "condition": "[parameters('enableLocks')]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
@@ -1839,8 +1841,8 @@
         }
       },
       "dependsOn": [
-        "[subscriptionResourceId('Microsoft.Resources/resourceGroups', format('cs-{0}-rg', parameters('environment')))]"
+        "rg"
       ]
     }
-  ]
+  }
 }
