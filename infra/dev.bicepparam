@@ -7,3 +7,6 @@ param isServerless = true
 param secondaryLocation = ''
 param budgetAmount = 200
 param contactEmails = ['fatima@cloudsecure.ai']
+
+// Azure Sponsorship account does not support Cost Management Budgets
+param deployBudget = false

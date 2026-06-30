@@ -11,6 +11,7 @@ param budgetStartDate string = '2026-07-01'
 param contactEmails array = ['fatima@cloudsecure.ai']
 
 // Hardening & Observability Parameters
+param deployBudget bool = true
 param enablePurgeProtection bool = false
 param enableLocks bool = false
 param appServicePlanSku string = 'B1'
@@ -192,7 +193,7 @@ module appservice 'modules/appservice.bicep' = {
 }
 
 // 12. Deploy Budgets (FinOps)
-module budgets 'modules/budgets.bicep' = {
+module budgets 'modules/budgets.bicep' = if (deployBudget) {
   scope: rg
   name: 'budgets-deploy'
   params: {
