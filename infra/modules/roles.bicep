@@ -12,7 +12,7 @@ param appconfigName string
 var keyVaultSecretsUser = '4633458b-17de-408a-b874-0445c86b69e6'
 var storageBlobDataContributor = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var serviceBusDataOwner = '090c5cfd-751d-490a-894a-3ce6f1109419'
-var cognitiveServicesUser = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd'
+var cognitiveServicesUser = '5e0bd9bd-3559-43c4-b487-e736a30fd7d3'
 var searchIndexDataContributor = '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
 var appConfigDataReader = '516239f1-63e1-4d78-a4de-a74fb236a071'
 
