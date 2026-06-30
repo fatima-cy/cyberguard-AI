@@ -1,0 +1,340 @@
+name: CI Pipeline
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CloudSecure AI Platform — Continuous Integration
+#
+# Triggers:
+#   - Every push to any branch
+#   - Every pull request targeting dev, staging, or main
+#
+# Jobs (run in dependency order):
+#   1. lint-and-typecheck       — ESLint + TypeScript (fast gate, ~2 min)
+#   2. unit-tests               — Jest unit tests with coverage (needs 1)
+#   3. integration-tests        — Jest + Cosmos emulator + Redis (needs 1)
+#   4. tenant-isolation-tests   — Isolation test suite (needs 2+3, PRs to staging/main only)
+#   5. trivy-scan               — Docker image vulnerability scan (needs 2+3)
+#   6. npm-audit                — Production dependency audit (independent)
+#   7. build-and-push           — Build + push to ACR (needs 4+5, staging/main merges only)
+#
+# Required status checks for PR merge (configured in branch protection):
+#   ci / lint-and-typecheck
+#   ci / unit-tests
+#   ci / integration-tests
+#   ci / trivy-scan
+#   ci / npm-audit
+#
+# @see Blueprint §8.5 — CI/CD Pipeline
+# @see Sprint 0 v1.1 §C-01 — CI Pipeline Specification
+# ══════════════════════════════════════════════════════════════════════════════
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [dev, staging, main]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ── Job 1: Lint + TypeScript ──────────────────────────────────────────────
+  lint-and-typecheck:
+    name: Lint & TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: TypeScript typecheck (all packages)
+        run: npx turbo typecheck
+
+      - name: ESLint (all packages)
+        run: npx turbo lint
+
+  # ── Job 2: Unit Tests ────────────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: lint-and-typecheck
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests with coverage
+        run: npx turbo test:unit -- --coverage
+        env:
+          NODE_ENV: test
+          APP_VERSION: '0.1.0-ci'
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report-${{ github.run_id }}
+          path: packages/api/coverage/
+          retention-days: 14
+
+  # ── Job 3: Integration Tests ─────────────────────────────────────────────
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: lint-and-typecheck
+    services:
+      cosmos:
+        image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:latest
+        ports:
+          - '8081:8081'
+        env:
+          AZURE_COSMOS_EMULATOR_PARTITION_COUNT: 10
+          AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE: 'false'
+          AZURE_COSMOS_EMULATOR_IP_ADDRESS_OVERRIDE: 0.0.0.0
+      redis:
+        image: redis:7-alpine
+        ports:
+          - '6379:6379'
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for Cosmos emulator to be ready
+        run: |
+          echo "Waiting for Cosmos DB emulator to initialise..."
+          for i in $(seq 1 40); do
+            if curl -sk https://localhost:8081/_explorer/emulator.pem > /dev/null 2>&1; then
+              echo "✓ Cosmos emulator ready after ${i} attempts"
+              break
+            fi
+            echo "  Attempt ${i}/40 — waiting 5 seconds..."
+            sleep 5
+          done
+          # Final check — fail if not ready
+          curl -fsk https://localhost:8081/_explorer/emulator.pem > /dev/null || \
+            (echo "✗ Cosmos emulator failed to start" && exit 1)
+
+      - name: Run integration tests
+        run: npx turbo test:integration
+        env:
+          NODE_ENV: test
+          COSMOS_CONNECTION_STRING: 'AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMcZcLU/D5YB==;'
+          COSMOS_DATABASE_NAME: cloudsecure_test
+          REDIS_CONNECTION_STRING: redis://localhost:6379
+
+  # ── Job 4: Tenant Isolation Tests ────────────────────────────────────────
+  # Runs only on PRs targeting staging or main — required status check for those branches.
+  # Sprint 0: 0 tests (all stubs) — passes CI gate.
+  # Sprint 1+: stubs replaced with real tests as each feature is built.
+  tenant-isolation-tests:
+    name: Tenant Isolation Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [unit-tests, integration-tests]
+    if: >
+      github.event_name == 'pull_request' &&
+      (github.base_ref == 'staging' || github.base_ref == 'main')
+    services:
+      cosmos:
+        image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:latest
+        ports:
+          - '8081:8081'
+        env:
+          AZURE_COSMOS_EMULATOR_PARTITION_COUNT: 10
+          AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE: 'false'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for Cosmos emulator
+        run: |
+          for i in $(seq 1 40); do
+            curl -sk https://localhost:8081/_explorer/emulator.pem > /dev/null 2>&1 && \
+              echo "✓ Cosmos ready" && break
+            sleep 5
+          done
+
+      - name: Run tenant isolation test suite
+        run: npx turbo test:tenant-isolation
+        env:
+          NODE_ENV: test
+          COSMOS_CONNECTION_STRING: 'AccountEndpoint=https://localhost:8081/;AccountKey=C2y6yDjf5/R+ob0N8A7Cgv30VRDJIWEHLM+4QDU5DE2nQ9nDuVTqobD4b8mGGyPMbIZnqyMcZcLU/D5YB==;'
+          COSMOS_DATABASE_NAME: cloudsecure_test
+
+  # ── Job 5: Trivy Security Scan ───────────────────────────────────────────
+  trivy-scan:
+    name: Trivy Container Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [unit-tests, integration-tests]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build API Docker image for scanning
+        run: |
+          docker build \
+            --file packages/api/Dockerfile \
+            --tag cs-api-scan:${{ github.sha }} \
+            .
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: cs-api-scan:${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL        # Only CRITICAL CVEs block the pipeline
+          exit-code: '1'            # Fail the job on any CRITICAL finding
+
+      - name: Upload Trivy SARIF results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()               # Upload even if the scan found vulnerabilities
+        with:
+          sarif_file: trivy-results.sarif
+
+  # ── Job 6: npm Dependency Audit ──────────────────────────────────────────
+  npm-audit:
+    name: Dependency Security Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        # --omit=dev: only check production dependencies (devDeps don't ship)
+        # --audit-level=high: fail on HIGH or CRITICAL severity vulnerabilities
+        run: npm audit --omit=dev --audit-level=high
+
+  # ── Job 7: Build and Push to ACR ─────────────────────────────────────────
+  # Only runs on pushes to staging or main (not on every feature branch push).
+  # Requires all previous jobs to pass first.
+  build-and-push:
+    name: Build & Push to Azure Container Registry
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [trivy-scan, npm-audit, unit-tests, integration-tests]
+    if: >
+      github.event_name == 'push' &&
+      (github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/main')
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Azure Container Registry
+        uses: azure/docker-login@v2
+        with:
+          login-server: ${{ vars.ACR_LOGIN_SERVER }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Build and push API image
+        run: |
+          IMAGE="${{ vars.ACR_LOGIN_SERVER }}/cs-api"
+          SHA_TAG="${IMAGE}:${{ github.sha }}"
+          BRANCH_TAG="${IMAGE}:${{ github.ref_name }}"
+          LATEST_TAG="${IMAGE}:latest"
+
+          # Build once, tag multiple times
+          docker build \
+            --file packages/api/Dockerfile \
+            --tag "$SHA_TAG" \
+            --build-arg BUILD_VERSION="${{ github.sha }}" \
+            .
+
+          docker tag "$SHA_TAG" "$BRANCH_TAG"
+
+          # Tag as latest only on main merges
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            docker tag "$SHA_TAG" "$LATEST_TAG"
+            docker push "$LATEST_TAG"
+          fi
+
+          docker push "$SHA_TAG"
+          docker push "$BRANCH_TAG"
+
+          echo "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' $SHA_TAG)" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify Slack — CI success
+        if: success()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "✅ CI passed + image pushed: *${{ github.ref_name }}* — `${{ github.sha }}`",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "✅ *CI Pipeline passed*\n*Branch:* `${{ github.ref_name }}`\n*SHA:* `${{ github.sha }}`\n*Actor:* ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true   # CI should not fail if Slack is misconfigured
+
+      - name: Notify Slack — CI failure
+        if: failure()
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "❌ CI FAILED: *${{ github.ref_name }}* — `${{ github.sha }}`\nCheck: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
