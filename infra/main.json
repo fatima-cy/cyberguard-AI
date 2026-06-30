@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "14468064564664781293"
+      "templateHash": "17195636861774438495"
     }
   },
   "parameters": {
@@ -1665,7 +1665,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "15270086190001193721"
+              "templateHash": "14958774768428649432"
             }
           },
           "parameters": {
@@ -1695,11 +1695,11 @@
             }
           },
           "variables": {
-            "keyVaultSecretsUser": "4633e12f-d50e-4e08-9b8e-04ae79e1410f",
+            "keyVaultSecretsUser": "4633458b-17de-408a-b874-0445c86b69e6",
             "storageBlobDataContributor": "ba92f5b4-2d11-453d-a403-e96b0029c9fe",
             "serviceBusDataOwner": "090c5cfd-751d-490a-894a-3ce6f1109419",
-            "cognitiveServicesUser": "5e0bd9bd-3559-43c4-b487-e736a30fd7d3",
-            "searchIndexDataContributor": "8ebe96e8-c1cc-437e-8fd5-04f504b8066f",
+            "cognitiveServicesUser": "a97b65f3-24c7-4388-baec-2e87135dc908",
+            "searchIndexDataContributor": "8ebe5a00-799e-43f5-93ac-243d3dce84a7",
             "appConfigDataReader": "516239f1-63e1-4d78-a4de-a74fb236a071"
           },
           "resources": [

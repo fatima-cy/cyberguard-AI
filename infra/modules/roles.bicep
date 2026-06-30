@@ -9,11 +9,11 @@ param aisearchName string
 param appconfigName string
 
 // Role Definition IDs (Standard Azure Built-in Roles)
-var keyVaultSecretsUser = '4633e12f-d50e-4e08-9b8e-04ae79e1410f'
+var keyVaultSecretsUser = '4633458b-17de-408a-b874-0445c86b69e6'
 var storageBlobDataContributor = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var serviceBusDataOwner = '090c5cfd-751d-490a-894a-3ce6f1109419'
-var cognitiveServicesUser = '5e0bd9bd-3559-43c4-b487-e736a30fd7d3'
-var searchIndexDataContributor = '8ebe96e8-c1cc-437e-8fd5-04f504b8066f'
+var cognitiveServicesUser = 'a97b65f3-24c7-4388-baec-2e87135dc908'
+var searchIndexDataContributor = '8ebe5a00-799e-43f5-93ac-243d3dce84a7'
 var appConfigDataReader = '516239f1-63e1-4d78-a4de-a74fb236a071'
 
 // Reference existing resources
