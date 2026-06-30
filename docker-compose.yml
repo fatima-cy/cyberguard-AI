@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # Redis cache
+  redis:
+    image: redis:7-alpine
+    container_name: cs-local-redis
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Storage emulator (Azurite)
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    container_name: cs-local-storage
+    ports:
+      - '10000:10000' # Blob service
+      - '10001:10001' # Queue service
+      - '10002:10002' # Table service
+    command: azurite -l /data --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0
+    volumes:
+      - azurite-data:/data
+
+  # Cosmos DB emulator
+  cosmos:
+    image: mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:latest
+    container_name: cs-local-cosmos
+    ports:
+      - '8081:8081'
+      - '10250-10255:10250-10255'
+    environment:
+      - AZURE_COSMOS_EMULATOR_PARTITION_COUNT=10
+      - AZURE_COSMOS_EMULATOR_ENABLE_DATA_PERSISTENCE=false
+      - AZURE_COSMOS_EMULATOR_IP_ADDRESS_OVERRIDE=0.0.0.0
+    healthcheck:
+      test: curl -k -f https://localhost:8081/_explorer/emulator.pem || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  azurite-data:
