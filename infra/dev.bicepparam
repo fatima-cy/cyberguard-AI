@@ -2,7 +2,7 @@ using 'main.bicep'
 
 param projectName = 'cyberguard-platform'
 param environment = 'dev'
-param location = 'westeurope'
+param location = 'swedencentral'
 param isServerless = true
 param secondaryLocation = ''
 param budgetAmount = 200

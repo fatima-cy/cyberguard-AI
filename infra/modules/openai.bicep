@@ -34,10 +34,13 @@ resource chatModel 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01'
   }
 }
 
-// Embeddings model deployment (using GlobalStandard for West Europe compatibility)
+// Embeddings model deployment (runs sequentially to avoid RequestConflict concurrency error §11)
 resource embeddingModel 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01' = {
   parent: openAI
   name: 'text-embedding-3-large'
+  dependsOn: [
+    chatModel // Enforce sequential deployment of models on the same Cognitive account
+  ]
   sku: {
     name: 'GlobalStandard'
     capacity: 10
