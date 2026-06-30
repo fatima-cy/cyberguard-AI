@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "3417569466650992963"
+      "templateHash": "18110329458657427307"
     }
   },
   "parameters": {
@@ -43,6 +43,10 @@
       "defaultValue": [
         "fatima@cloudsecure.ai"
       ]
+    },
+    "deployBudget": {
+      "type": "bool",
+      "defaultValue": true
     },
     "enablePurgeProtection": {
       "type": "bool",
@@ -609,7 +613,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "2091760765986962231"
+              "templateHash": "323045232175929546"
             }
           },
           "parameters": {
@@ -624,44 +628,43 @@
             },
             "skuName": {
               "type": "string",
-              "defaultValue": "Basic"
-            },
-            "skuFamily": {
-              "type": "string",
-              "defaultValue": "C"
-            },
-            "skuCapacity": {
-              "type": "int",
-              "defaultValue": 0
+              "defaultValue": "Balanced_B5"
             }
           },
           "resources": {
-            "redis": {
-              "type": "Microsoft.Cache/redis",
-              "apiVersion": "2023-08-01",
+            "redisEnterprise": {
+              "type": "Microsoft.Cache/redisEnterprise",
+              "apiVersion": "2024-05-01-preview",
               "name": "[parameters('name')]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
+              "sku": {
+                "name": "[parameters('skuName')]"
+              },
               "properties": {
-                "sku": {
-                  "name": "[parameters('skuName')]",
-                  "family": "[parameters('skuFamily')]",
-                  "capacity": "[parameters('skuCapacity')]"
-                },
-                "enableNonSslPort": false,
-                "minimumTlsVersion": "1.2",
-                "redisConfiguration": {
-                  "maxfragmentationmemory-reserved": "50",
-                  "maxmemory-delta": "50",
-                  "maxmemory-reserved": "50"
-                }
+                "minimumTlsVersion": "1.2"
               }
+            },
+            "redisDatabase": {
+              "type": "Microsoft.Cache/redisEnterprise/databases",
+              "apiVersion": "2024-05-01-preview",
+              "name": "[format('{0}/{1}', parameters('name'), 'default')]",
+              "properties": {
+                "clientProtocol": "Encrypted",
+                "port": 10000,
+                "clusteringPolicy": "OSSCluster",
+                "evictionPolicy": "NoEviction",
+                "accessKeysAuthentication": "Enabled"
+              },
+              "dependsOn": [
+                "redisEnterprise"
+              ]
             }
           },
           "outputs": {
             "id": {
               "type": "string",
-              "value": "[resourceId('Microsoft.Cache/redis', parameters('name'))]"
+              "value": "[resourceId('Microsoft.Cache/redisEnterprise', parameters('name'))]"
             },
             "name": {
               "type": "string",
@@ -669,15 +672,15 @@
             },
             "hostName": {
               "type": "string",
-              "value": "[reference('redis').hostName]"
+              "value": "[reference('redisEnterprise').hostName]"
             },
             "sslPort": {
               "type": "int",
-              "value": "[reference('redis').sslPort]"
+              "value": 10000
             },
             "primaryKey": {
               "type": "securestring",
-              "value": "[listKeys('redis', '2023-08-01').primaryKey]"
+              "value": "[listKeys('redisDatabase', '2024-05-01-preview').primaryKey]"
             }
           }
         }
@@ -896,7 +899,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "1994075160363329109"
+              "templateHash": "3480375208965798735"
             }
           },
           "parameters": {
@@ -961,6 +964,7 @@
                 }
               },
               "dependsOn": [
+                "[resourceId('Microsoft.CognitiveServices/accounts/deployments', parameters('name'), 'gpt-4o-mini')]",
                 "[resourceId('Microsoft.CognitiveServices/accounts', parameters('name'))]"
               ]
             }
@@ -1531,6 +1535,7 @@
       ]
     },
     "budgets": {
+      "condition": "[parameters('deployBudget')]",
       "type": "Microsoft.Resources/deployments",
       "apiVersion": "2025-04-01",
       "name": "budgets-deploy",
