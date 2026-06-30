@@ -30,3 +30,4 @@ output id string = redis.id
 output name string = redis.name
 output hostName string = redis.properties.hostName
 output sslPort int = redis.properties.sslPort
+output primaryKey string = redis.listKeys().primaryKey // Export access key to wire to Key Vault

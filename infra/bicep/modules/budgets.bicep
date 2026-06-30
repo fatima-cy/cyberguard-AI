@@ -2,6 +2,7 @@
 param budgetName string
 param amount int
 param contactEmails array
+param startDate string = '2026-07-01' // Parameterized start date to stay valid after date passes (§1.8)
 
 resource budget 'Microsoft.Consumption/budgets@2023-11-01' = {
   name: budgetName
@@ -10,7 +11,7 @@ resource budget 'Microsoft.Consumption/budgets@2023-11-01' = {
     amount: amount
     timeGrain: 'Monthly'
     timePeriod: {
-      startDate: '2026-07-01'
+      startDate: startDate
     }
     notifications: {
       Alert80Pct: {

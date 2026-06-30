@@ -11,6 +11,7 @@ param aiSearchEndpoint string
 param blobEndpoint string
 param keyVaultUri string
 param appConfigEndpoint string
+param appInsightsConnectionString string = ''
 
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: '${name}-plan'
@@ -18,7 +19,6 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   tags: tags
   sku: {
     name: planSkuName
-    tier: 'Basic'
   }
   kind: 'linux'
   properties: {
@@ -35,8 +35,11 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
   }
   properties: {
     serverFarmId: appServicePlan.id
+    httpsOnly: true // Hardening: Enforce HTTPS (§1.1)
     siteConfig: {
       linuxFxVersion: 'NODE|20-lts'
+      minTlsVersion: '1.2' // Hardening: Set minimum TLS version (§1.1)
+      ftpsState: 'Disabled' // Hardening: Disable legacy FTP/FTPS (§1.1)
       appSettings: [
         {
           name: 'NODE_ENV'
@@ -77,6 +80,10 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'APP_CONFIG_ENDPOINT'
           value: appConfigEndpoint
+        }
+        {
+          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+          value: appInsightsConnectionString
         }
       ]
     }

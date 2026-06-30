@@ -5,6 +5,7 @@ param tags object
 param databaseName string = 'cloudsecure_platform'
 param isServerless bool = true
 param secondaryLocation string = ''
+param workspaceId string = '' // Optional Log Analytics workspace ID for diagnostics (§1.3)
 
 var locations = concat(
   [
@@ -37,7 +38,7 @@ resource cosmosAccount 'Microsoft.DocumentDB/databaseAccounts@2024-02-15-preview
       }
     ] : []
     backupPolicy: {
-      type: 'Continuous' // Required for PITR recovery §20.2
+      type: 'Continuous'
       continuousModeProperties: {
         tier: 'Continuous30Days'
       }
@@ -55,7 +56,6 @@ resource database 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-02-15
   }
 }
 
-// 15 core collections with data_classification tags as metadata (Sprint 0 §23.3)
 var containerDefinitions = [
   { name: 'users', partitionKey: '/organizationId', classification: 'confidential' }
   { name: 'organizations', partitionKey: '/id', classification: 'internal' }
@@ -92,6 +92,30 @@ resource containers 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containe
     }
   }
 }]
+
+resource diagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = if (workspaceId != '') {
+  scope: cosmosAccount
+  name: '${name}-diagnostics'
+  properties: {
+    workspaceId: workspaceId
+    logs: [
+      {
+        category: 'DataPlaneRequests'
+        enabled: true
+      }
+      {
+        category: 'QueryRuntimeStatistics'
+        enabled: true
+      }
+    ]
+    metrics: [
+      {
+        category: 'Requests'
+        enabled: true
+      }
+    ]
+  }
+}
 
 output id string = cosmosAccount.id
 output name string = cosmosAccount.name

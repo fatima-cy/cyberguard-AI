@@ -7,7 +7,16 @@ param location string = 'westeurope'
 param isServerless bool = true
 param secondaryLocation string = ''
 param budgetAmount int = 200
+param budgetStartDate string = '2026-07-01'
 param contactEmails array = ['fatima@cloudsecure.ai']
+
+// Hardening & Observability Parameters (§1)
+param enablePurgeProtection bool = false
+param enableLocks bool = false
+param appServicePlanSku string = 'B1'
+param appConfigSku string = 'free'
+param enableBlobVersioning bool = true
+param enableBlobSoftDelete bool = true
 
 var tags = {
   Project: projectName
@@ -31,6 +40,7 @@ var aisearchName = 'cs-${environment}-search-${suffix}'
 var storageName = take('cs${environment}blob${suffix}', 24)
 var appconfigName = 'cs-${environment}-appconfig-${suffix}'
 var appserviceName = 'cs-${environment}-api-${suffix}'
+var insightsName = 'cs-${environment}-insights-${suffix}'
 
 // 1. Create Resource Group
 resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
@@ -39,7 +49,18 @@ resource rg 'Microsoft.Resources/resourceGroups@2021-04-01' = {
   tags: tags
 }
 
-// 2. Deploy Key Vault
+// 2. Deploy Log Analytics Workspace & App Insights (§1.3)
+module insights 'modules/insights.bicep' = {
+  scope: rg
+  name: 'insights-deploy'
+  params: {
+    name: insightsName
+    location: location
+    tags: tags
+  }
+}
+
+// 3. Deploy Key Vault (with diagnostics + optional purge protection)
 module kv 'modules/keyvault.bicep' = {
   scope: rg
   name: 'keyvault-deploy'
@@ -47,10 +68,12 @@ module kv 'modules/keyvault.bicep' = {
     name: kvName
     location: location
     tags: tags
+    enablePurgeProtection: enablePurgeProtection
+    workspaceId: insights.outputs.workspaceId
   }
 }
 
-// 3. Deploy Cosmos DB
+// 4. Deploy Cosmos DB (with diagnostics)
 module cosmos 'modules/cosmosdb.bicep' = {
   scope: rg
   name: 'cosmosdb-deploy'
@@ -60,10 +83,11 @@ module cosmos 'modules/cosmosdb.bicep' = {
     tags: tags
     isServerless: isServerless
     secondaryLocation: secondaryLocation
+    workspaceId: insights.outputs.workspaceId
   }
 }
 
-// 4. Deploy Redis
+// 5. Deploy Redis
 module redis 'modules/redis.bicep' = {
   scope: rg
   name: 'redis-deploy'
@@ -74,7 +98,7 @@ module redis 'modules/redis.bicep' = {
   }
 }
 
-// 5. Deploy Service Bus
+// 6. Deploy Service Bus
 module servicebus 'modules/servicebus.bicep' = {
   scope: rg
   name: 'servicebus-deploy'
@@ -85,7 +109,7 @@ module servicebus 'modules/servicebus.bicep' = {
   }
 }
 
-// 6. Deploy OpenAI
+// 7. Deploy OpenAI
 module openai 'modules/openai.bicep' = {
   scope: rg
   name: 'openai-deploy'
@@ -96,7 +120,7 @@ module openai 'modules/openai.bicep' = {
   }
 }
 
-// 7. Deploy AI Search
+// 8. Deploy AI Search
 module aisearch 'modules/aisearch.bicep' = {
   scope: rg
   name: 'aisearch-deploy'
@@ -107,7 +131,7 @@ module aisearch 'modules/aisearch.bicep' = {
   }
 }
 
-// 8. Deploy Blob Storage
+// 9. Deploy Blob Storage (with diagnostics + versioning + soft-delete)
 module storage 'modules/storage.bicep' = {
   scope: rg
   name: 'storage-deploy'
@@ -115,10 +139,13 @@ module storage 'modules/storage.bicep' = {
     name: storageName
     location: location
     tags: tags
+    enableVersioning: enableBlobVersioning
+    enableSoftDelete: enableBlobSoftDelete
+    workspaceId: insights.outputs.workspaceId
   }
 }
 
-// 9. Deploy App Configuration
+// 10. Deploy App Configuration (parameterized SKU)
 module appconfig 'modules/appconfig.bicep' = {
   scope: rg
   name: 'appconfig-deploy'
@@ -126,10 +153,11 @@ module appconfig 'modules/appconfig.bicep' = {
     name: appconfigName
     location: location
     tags: tags
+    skuName: appConfigSku
   }
 }
 
-// 10. Deploy App Service (Linux Web App)
+// 11. Deploy App Service (Linux Web App with App Insights connected)
 module appservice 'modules/appservice.bicep' = {
   scope: rg
   name: 'appservice-deploy'
@@ -137,6 +165,7 @@ module appservice 'modules/appservice.bicep' = {
     name: appserviceName
     location: location
     tags: tags
+    planSkuName: appServicePlanSku
     cosmosEndpoint: cosmos.outputs.endpoint
     redisEndpoint: '${redis.outputs.hostName}:${redis.outputs.sslPort}'
     serviceBusNamespace: servicebus.outputs.endpoint
@@ -145,10 +174,11 @@ module appservice 'modules/appservice.bicep' = {
     blobEndpoint: storage.outputs.blobEndpoint
     keyVaultUri: kv.outputs.uri
     appConfigEndpoint: appconfig.outputs.endpoint
+    appInsightsConnectionString: insights.outputs.connectionString
   }
 }
 
-// 11. Deploy Budgets (FinOps)
+// 12. Deploy Budgets (FinOps)
 module budgets 'modules/budgets.bicep' = {
   scope: rg
   name: 'budgets-deploy'
@@ -156,10 +186,11 @@ module budgets 'modules/budgets.bicep' = {
     budgetName: 'cs-${environment}-budget'
     amount: budgetAmount
     contactEmails: contactEmails
+    startDate: budgetStartDate
   }
 }
 
-// 12. Managed Identity Role Assignments (RBAC)
+// 13. Managed Identity Role Assignments (RBAC)
 module roles 'modules/roles.bicep' = {
   scope: rg
   name: 'rbac-roles-deploy'
@@ -173,4 +204,21 @@ module roles 'modules/roles.bicep' = {
     aisearchName: aisearch.outputs.name
     appconfigName: appconfig.outputs.name
   }
+}
+
+// 14. Automate Seeding Redis Access Key to Key Vault (§1.2)
+module redisKeySecret 'modules/keyvault-secret.bicep' = {
+  scope: rg
+  name: 'redis-key-secret-deploy'
+  params: {
+    keyVaultName: kvName
+    secretName: 'redis-primary-key'
+    secretValue: redis.outputs.primaryKey
+  }
+}
+
+// 15. Deploy Resource Group Locks for Production (conditionally §1.9)
+module locks 'modules/locks.bicep' = if (enableLocks) {
+  scope: rg
+  name: 'resource-group-lock'
 }
