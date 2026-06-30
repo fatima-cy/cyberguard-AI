@@ -6,7 +6,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "18110329458657427307"
+      "templateHash": "14468064564664781293"
     }
   },
   "parameters": {
@@ -613,7 +613,7 @@
             "_generator": {
               "name": "bicep",
               "version": "0.44.1.10279",
-              "templateHash": "323045232175929546"
+              "templateHash": "548263661384891655"
             }
           },
           "parameters": {
@@ -634,7 +634,7 @@
           "resources": {
             "redisEnterprise": {
               "type": "Microsoft.Cache/redisEnterprise",
-              "apiVersion": "2024-05-01-preview",
+              "apiVersion": "2025-07-01",
               "name": "[parameters('name')]",
               "location": "[parameters('location')]",
               "tags": "[parameters('tags')]",
@@ -642,12 +642,13 @@
                 "name": "[parameters('skuName')]"
               },
               "properties": {
-                "minimumTlsVersion": "1.2"
+                "minimumTlsVersion": "1.2",
+                "publicNetworkAccess": "Enabled"
               }
             },
             "redisDatabase": {
               "type": "Microsoft.Cache/redisEnterprise/databases",
-              "apiVersion": "2024-05-01-preview",
+              "apiVersion": "2025-07-01",
               "name": "[format('{0}/{1}', parameters('name'), 'default')]",
               "properties": {
                 "clientProtocol": "Encrypted",
@@ -680,7 +681,7 @@
             },
             "primaryKey": {
               "type": "securestring",
-              "value": "[listKeys('redisDatabase', '2024-05-01-preview').primaryKey]"
+              "value": "[listKeys('redisDatabase', '2025-07-01').primaryKey]"
             }
           }
         }

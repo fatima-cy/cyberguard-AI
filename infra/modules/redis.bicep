@@ -4,7 +4,7 @@ param location string
 param tags object
 param skuName string = 'Balanced_B5' // Entry level SKU for Azure Managed Redis
 
-resource redisEnterprise 'Microsoft.Cache/redisEnterprise@2024-05-01-preview' = {
+resource redisEnterprise 'Microsoft.Cache/redisEnterprise@2025-07-01' = {
   name: name
   location: location
   tags: tags
@@ -13,10 +13,11 @@ resource redisEnterprise 'Microsoft.Cache/redisEnterprise@2024-05-01-preview' = 
   }
   properties: {
     minimumTlsVersion: '1.2'
+    publicNetworkAccess: 'Enabled'
   }
 }
 
-resource redisDatabase 'Microsoft.Cache/redisEnterprise/databases@2024-05-01-preview' = {
+resource redisDatabase 'Microsoft.Cache/redisEnterprise/databases@2025-07-01' = {
   name: 'default'
   parent: redisEnterprise
   properties: {
