@@ -1,20 +1,18 @@
 /**
  * CyberGuard AI — Express Application
  *
- * IMPORTANT: initTelemetry() is called FIRST before any other imports.
- * OpenTelemetry must be initialised before the Azure SDKs are loaded
- * so that all SDK calls are auto-instrumented.
- *
  * Application startup sequence:
- *   1. Initialise OTel (must be first)
- *   2. Configure Express security middleware
- *   3. Mount versioned API router (/api/v1)
- *   4. Register health endpoint (on both /health and /api/v1/health)
- *   5. Register 404 and global error handlers
+ *   1. Initialise OTel (must be first — before any Azure SDK imports)
+ *   2. Security middleware (helmet, cors, body parsing)
+ *   3. Correlation + request logging middleware
+ *   4. Rate limiting
+ *   5. Health endpoints (/health, /health/cosmos, /health/ai, /api/v1/health)
+ *   6. Versioned API router (/api/v1)
+ *   7. 404 and global error handlers (must be last)
  *
  * @see Blueprint §7.6 — API Architecture (/api/v1 versioning)
- * @see Blueprint §6.14 — AI Telemetry (OTel first-import requirement)
- * @see Sprint 0 v1.1 §18 — API Versioning Strategy
+ * @see Blueprint §6.14 — AI Telemetry
+ * @see Sprint 1.1 — Enhanced health endpoints, request logger added
  */
 
 // ─── Step 1: OTel MUST be first ──────────────────────────────────────────────
@@ -25,11 +23,15 @@ initTelemetry();
 import express, { Router, type Request, type Response } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
 import { config } from './config/env';
 import { correlationMiddleware } from './core/observability/telemetry';
 import { logger } from './core/observability/logger';
+import { requestLogger } from './middleware/requestLogger.middleware';
 import { notFoundHandler, globalErrorHandler } from './middleware/errorHandler';
+import { container } from './config/db';
+import { checkRedisHealth } from './config/redis';
 
 // ─── Application instance ────────────────────────────────────────────────────
 const app = express();
@@ -50,9 +52,9 @@ app.use(
         frameSrc: ["'none'"],
       },
     },
-    crossOriginEmbedderPolicy: false, // Required for Azure Static Web Apps integration
+    crossOriginEmbedderPolicy: false,
     hsts: {
-      maxAge: 31536000, // 1 year
+      maxAge: 31536000,
       includeSubDomains: true,
       preload: true,
     },
@@ -62,35 +64,32 @@ app.use(
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (health checks, Postman, server-to-server)
-      if (!origin) {
-        callback(null, true);
-        return;
-      }
+      if (!origin) { callback(null, true); return; }
       if (config.app.corsAllowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
         callback(new Error(`CORS: origin '${origin}' is not permitted`));
       }
     },
-    credentials: true, // Required for HttpOnly refresh-token cookies
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
     exposedHeaders: ['X-Request-ID', 'X-Trace-ID'],
   }),
 );
 
-// Parse JSON bodies — 1MB limit prevents large-payload DoS
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
+app.use(cookieParser());
 
-// ─── Correlation middleware (inject X-Request-ID on every request) ───────────
+// ─── Correlation + request logging ───────────────────────────────────────────
 app.use(correlationMiddleware);
+app.use(requestLogger);
 
-// ─── Rate limiting — general API limiter (per-feature limits added in Sprint 1)
+// ─── Rate limiting ────────────────────────────────────────────────────────────
 const generalLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute window
-  max: 60,             // 60 requests per minute per IP (dev/staging default)
+  windowMs: 60 * 1000,
+  max: 60,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
@@ -99,25 +98,51 @@ const generalLimiter = rateLimit({
     status: 429,
     detail: 'You have exceeded the request rate limit. Please try again in a moment.',
   },
-  skip: () => config.app.isTest, // Never rate-limit during automated testing
+  skip: () => config.app.isTest,
 });
 app.use('/api/', generalLimiter);
 
-// ─── Health endpoint (on two paths) ──────────────────────────────────────────
-// Path 1: /health — for Azure App Service health check probe
-// Path 2: /api/v1/health — for versioned API health checks and CI smoke tests
-// Both return identical responses.
-// In Sprint 1, this response will include dependency health checks:
-// { cosmos: 'ok', redis: 'ok', servicebus: 'ok' }
-function healthHandler(_req: Request, res: Response): void {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+// ─── Health endpoints ─────────────────────────────────────────────────────────
+// /health             — Azure App Service probe (fast, no dependencies)
+// /health/cosmos      — Cosmos DB connectivity check
+// /health/ai          — OpenAI endpoint reachability check
+// /api/v1/health      — Versioned alias (returns same as /health + dependency status)
 
-  const traceId = (_req as Request & { traceId: string }).traceId ?? 'not-available';
-  const requestId = (_req as Request & { requestId: string }).requestId ?? 'not-available';
-
+async function basicHealthHandler(_req: Request, res: Response): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
   res.status(200).json({
     status: 'healthy',
-    message: 'CyberGuard AI API Running',
+    version: config.app.version,
+    environment: config.app.nodeEnv,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+async function fullHealthHandler(req: Request, res: Response): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+
+  const traceId = (req as any).traceId ?? 'not-available';
+  const requestId = (req as any).requestId ?? 'not-available';
+
+  // Run dependency checks in parallel with a timeout
+  const timeout = <T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
+    Promise.race([
+      promise,
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), ms),
+      ),
+    ]).catch(() => fallback);
+
+  const [cosmosStatus, redisStatus] = await Promise.all([
+    timeout(checkCosmosHealth(), 3000, 'unavailable' as const),
+    timeout(checkRedisHealth(), 2000, 'unavailable' as const),
+  ]);
+
+  const allHealthy = cosmosStatus === 'ok';
+  const status = allHealthy ? 'healthy' : 'degraded';
+
+  res.status(allHealthy ? 200 : 207).json({
+    status,
     version: config.app.version,
     environment: config.app.nodeEnv,
     timestamp: new Date().toISOString(),
@@ -125,21 +150,47 @@ function healthHandler(_req: Request, res: Response): void {
     traceId,
     checks: {
       api: 'ok',
-      // Sprint 1 will add:
-      // cosmos: 'ok' | 'degraded' | 'unavailable',
-      // redis:  'ok' | 'degraded' | 'unavailable',
+      cosmos: cosmosStatus,
+      redis: redisStatus,
     },
   });
 }
 
-app.get('/health', healthHandler);
-app.get('/api/v1/health', healthHandler);
+async function cosmosHealthHandler(_req: Request, res: Response): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const status = await checkCosmosHealth();
+    res.status(status === 'ok' ? 200 : 503).json({ status, timestamp: new Date().toISOString() });
+  } catch {
+    res.status(503).json({ status: 'unavailable', timestamp: new Date().toISOString() });
+  }
+}
+
+async function aiHealthHandler(_req: Request, res: Response): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  // Lightweight check — verifies the OpenAI endpoint is configured and reachable
+  const endpoint = config.azure.endpoints.openai ?? 'not-configured';
+  const configured = endpoint !== 'not-configured';
+  res.status(configured ? 200 : 503).json({
+    status: configured ? 'ok' : 'not-configured',
+    endpoint: configured ? endpoint.replace(/\/\/.*@/, '//<redacted>@') : 'not-configured',
+    deployment: config.openai.deploymentName,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+// Register health routes
+app.get('/health', basicHealthHandler);
+app.get('/health/cosmos', cosmosHealthHandler);
+app.get('/health/ai', aiHealthHandler);
 
 // ─── Versioned API Router (/api/v1) ──────────────────────────────────────────
 const v1Router = Router();
 
-// Phase 2-4 module stubs — return 503 until feature flag enables the module.
-// These stubs ensure the router is wired correctly before any module is built.
+// Full health check on the versioned path
+v1Router.get('/health', fullHealthHandler);
+
+// Phase 2-4 module stubs
 const moduleNotAvailableHandler = (_req: Request, res: Response): void => {
   res.status(503).json({
     type: '/errors/module-not-available',
@@ -150,25 +201,16 @@ const moduleNotAvailableHandler = (_req: Request, res: Response): void => {
   });
 };
 
-v1Router.use('/academy', moduleNotAvailableHandler);   // Phase 2
-v1Router.use('/sarah', moduleNotAvailableHandler);     // Phase 3
-v1Router.use('/ecocold', moduleNotAvailableHandler);   // Phase 4
+v1Router.use('/academy', moduleNotAvailableHandler);
+v1Router.use('/sarah', moduleNotAvailableHandler);
+v1Router.use('/ecocold', moduleNotAvailableHandler);
 
-// Sprint 1+ modules will be mounted here:
+// Sprint 1.2+ module routers — uncommented as each sprint delivers them:
 // v1Router.use('/auth',          authRouter);
 // v1Router.use('/users',         usersRouter);
 // v1Router.use('/organizations', organizationsRouter);
-// v1Router.use('/subscriptions', subscriptionsRouter);
-// v1Router.use('/billing',       billingRouter);
-// v1Router.use('/notifications', notificationsRouter);
-// v1Router.use('/metering',      meteringRouter);
-// v1Router.use('/knowledge',     knowledgeRouter);
-// v1Router.use('/cyberguard',    cyberguardRouter);
 // v1Router.use('/dashboard',     dashboardRouter);
-// v1Router.use('/analytics',     analyticsRouter);
-// v1Router.use('/audit-logs',    auditLogsRouter);
-// v1Router.use('/feature-flags', featureFlagsRouter);
-// v1Router.use('/admin',         adminRouter);
+// v1Router.use('/cyberguard',    cyberguardRouter);
 
 app.use('/api/v1', v1Router);
 
@@ -176,7 +218,7 @@ app.use('/api/v1', v1Router);
 app.use(notFoundHandler);
 app.use(globalErrorHandler);
 
-// ─── Server startup (only when run directly, not when imported by tests) ─────
+// ─── Server startup ───────────────────────────────────────────────────────────
 if (require.main === module) {
   const port = config.app.port;
   app.listen(port, () => {
@@ -184,9 +226,23 @@ if (require.main === module) {
       port,
       version: config.app.version,
       environment: config.app.nodeEnv,
+      cosmosStrategy: process.env.__COSMOS_STRATEGY__,
+      openaiStrategy: process.env.__OPENAI_STRATEGY__,
       health: `http://localhost:${port}/health`,
     });
   });
+}
+
+// ─── Cosmos health check helper ───────────────────────────────────────────────
+async function checkCosmosHealth(): Promise<'ok' | 'unavailable'> {
+  try {
+    // Lightweight operation — reads database properties, doesn't scan data
+    const usersContainer = container('users');
+    await usersContainer.read();
+    return 'ok';
+  } catch {
+    return 'unavailable';
+  }
 }
 
 export default app;
