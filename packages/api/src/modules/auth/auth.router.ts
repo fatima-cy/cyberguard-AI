@@ -166,8 +166,8 @@ authRouter.post('/logout', (req: Request, res: Response) => {
 authRouter.get('/me', requireAuth, async (req: Request, res: Response) => {
   
 
-  const partitionKey = req.user!.organizationId ?? req.user!.userId;
-  const userDoc = await findUserById(req.user!.userId, partitionKey);
+  
+  const userDoc = await findUserById(req.user!.userId);
 
   if (!userDoc) {
     res.status(404).json({

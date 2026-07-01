@@ -25,19 +25,14 @@ export async function findUserByEmail(email: string): Promise<UserDocument | nul
   return resources[0] ?? null;
 }
 
-export async function findUserById(
-  userId: string,
-  partitionKey: string,
-): Promise<UserDocument | null> {
-  try {
-    const { resource } = await container(CONTAINER)
-      .item(userId, partitionKey)
-      .read<UserDocument>();
-    return resource ?? null;
-  } catch (err: any) {
-    if (err.code === 404) return null;
-    throw err;
-  }
+export async function findUserById(userId: string): Promise<UserDocument | null> {
+  const { resources } = await container(CONTAINER)
+    .items.query<UserDocument>({
+      query: 'SELECT * FROM c WHERE c.id = @userId',
+      parameters: [{ name: '@userId', value: userId }],
+    })
+    .fetchAll();
+  return resources[0] ?? null;
 }
 
 export async function createUser(

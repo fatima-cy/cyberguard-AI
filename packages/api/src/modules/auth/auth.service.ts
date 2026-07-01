@@ -154,8 +154,8 @@ export async function refreshTokens(refreshToken: string): Promise<RefreshResult
   if (payload.type !== 'refresh') throw invalidErr;
 
   // Fetch user to validate token version (invalidates tokens after logout)
-  const partitionKey = payload.sub; // userId used as partition until org assigned
-  const userDoc = await findUserById(payload.sub, partitionKey);
+  
+  const userDoc = await findUserById(payload.sub);
   if (!userDoc) throw invalidErr;
   if (userDoc.refreshTokenVersion !== payload.version) throw invalidErr;
 
