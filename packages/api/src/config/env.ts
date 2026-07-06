@@ -107,7 +107,6 @@ export const config = {
     deploymentName: optional('OPENAI_DEPLOYMENT_NAME', 'gpt-4o-mini'),
     embeddingDeployment: optional('OPENAI_EMBEDDING_DEPLOYMENT', 'text-embedding-3-large'),
     maxTokens: parseInt(optional('OPENAI_MAX_TOKENS', '2048'), 10),
-    temperature: parseFloat(optional('OPENAI_TEMPERATURE', '0.7')),
   },
 };
 
