@@ -209,8 +209,11 @@ v1Router.use('/ecocold', moduleNotAvailableHandler);
 import { authRouter } from './modules/auth/auth.router';
 v1Router.use('/auth', authRouter);
 
-// Sprint 1.4+ module routers — uncommented as each sprint delivers them:
-// v1Router.use('/organizations', organizationsRouter);
+// Sprint 1.4: Organizations router mounted
+import { organizationsRouter } from './modules/organizations/organizations.router';
+v1Router.use('/organizations', organizationsRouter);
+
+// Sprint 1.5+ module routers:
 // v1Router.use('/dashboard',     dashboardRouter);
 // v1Router.use('/cyberguard',    cyberguardRouter);
 

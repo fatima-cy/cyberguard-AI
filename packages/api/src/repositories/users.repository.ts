@@ -52,13 +52,44 @@ export async function createUser(
   return resource;
 }
 
+/**
+ * Update user fields. When organizationId is being set for the first time
+ * (partition key migration), we must delete + re-create the document because
+ * Cosmos DB does not allow patching the partition key value in-place.
+ */
 export async function updateUser(
   userId: string,
-  partitionKey: string,
+  currentPartitionKey: string | null,
   updates: Partial<Pick<UserDocument, 'organizationId' | 'role' | 'refreshTokenVersion' | 'updatedAt' | '_partitionKey'>>,
 ): Promise<void> {
-  const operations = Object.entries({ ...updates, updatedAt: new Date().toISOString() }).map(
-    ([key, value]) => ({ op: 'set' as const, path: `/${key}`, value }),
-  );
-  await container(CONTAINER).item(userId, partitionKey).patch(operations);
+  const isMigratingPartition =
+    updates.organizationId !== undefined && currentPartitionKey !== updates.organizationId;
+
+  if (isMigratingPartition) {
+    // Delete + re-create to move document to new partition
+    const { resource: existing } = await container(CONTAINER)
+      .item(userId, currentPartitionKey)
+      .read<UserDocument>();
+
+    if (!existing) throw new Error(`User ${userId} not found for partition migration`);
+
+    await container(CONTAINER).item(userId, currentPartitionKey).delete();
+
+    const { _rid, _self, _etag, _attachments, _ts, ...clean } = existing as any;
+    const updated: UserDocument = {
+      ...clean,
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await container(CONTAINER).items.create<UserDocument>(updated);
+  } else {
+    // Simple patch for non-partition-key fields
+    const operations = Object.entries({
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    }).map(([key, value]) => ({ op: 'set' as const, path: `/${key}`, value }));
+
+    await container(CONTAINER).item(userId, currentPartitionKey).patch(operations);
+  }
 }
