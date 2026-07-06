@@ -216,7 +216,8 @@ v1Router.use('/organizations', organizationsRouter);
 // Sprint 1.5: CyberGuard AI chat router mounted
 import { cyberguardRouter } from './modules/cyberguard/cyberguard.router';
 v1Router.use('/cyberguard', cyberguardRouter);
-// v1Router.use('/dashboard',     dashboardRouter);
+import { dashboardRouter } from './modules/dashboard/dashboard.router';
+v1Router.use('/dashboard', dashboardRouter);
 // v1Router.use('/cyberguard',    cyberguardRouter);
 
 app.use('/api/v1', v1Router);
