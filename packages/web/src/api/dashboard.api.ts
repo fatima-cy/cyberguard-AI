@@ -38,11 +38,22 @@ export const chatApi = {
   sendMessage: (data: { message: string; sessionId?: string }) =>
     api.post<ChatResponse>('/api/v1/cyberguard/chat', data),
 
-  listSessions: (page = 1, limit = 20) =>
+  listSessions: (page = 1, limit = 50) =>
     api.get<{ sessions: ChatSession[]; page: number; limit: number }>(
       `/api/v1/cyberguard/sessions?page=${page}&limit=${limit}`,
     ),
 
   getSession: (sessionId: string) =>
     api.get<SessionDetail>(`/api/v1/cyberguard/sessions/${sessionId}`),
+
+  renameSession: (sessionId: string, title: string) =>
+    api.patch<{ id: string; title: string }>(
+      `/api/v1/cyberguard/sessions/${sessionId}`,
+      { title },
+    ),
+
+  deleteSession: (sessionId: string) =>
+    api.delete<{ id: string; deleted: boolean }>(
+      `/api/v1/cyberguard/sessions/${sessionId}`,
+    ),
 };

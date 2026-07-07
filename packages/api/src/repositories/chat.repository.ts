@@ -4,7 +4,12 @@
  * All Cosmos DB operations for chat_sessions and chat_messages containers.
  * Both containers use /organizationId as partition key for tenant isolation.
  *
- * @see Sprint 1.6
+ * Sprint 1.6: createSession, getSessionById, listSessions, updateSessionMetadata,
+ *             saveMessage, getMessagesBySession
+ * Sprint 2.3: deleteSession (soft delete), renameSession, listSessions updated
+ *             to exclude deleted sessions
+ *
+ * @see Blueprint §6.1
  */
 
 import { container } from '../config/db';
@@ -29,7 +34,9 @@ export async function getSessionById(
     const { resource } = await container(SESSIONS)
       .item(sessionId, organizationId)
       .read<ChatSession>();
-    return resource ? toSafeSession(resource) : null;
+    // Exclude soft-deleted sessions
+    if (!resource || (resource as any).deletedAt) return null;
+    return toSafeSession(resource);
   } catch (err: any) {
     if (err.code === 404) return null;
     throw err;
@@ -44,8 +51,11 @@ export async function listSessions(
   const offset = (page - 1) * limit;
   const { resources } = await container(SESSIONS)
     .items.query<ChatSession>({
-      query:
-        'SELECT * FROM c WHERE c.organizationId = @orgId ORDER BY c.updatedAt DESC OFFSET @offset LIMIT @limit',
+      query: `SELECT * FROM c
+              WHERE c.organizationId = @orgId
+              AND NOT IS_DEFINED(c.deletedAt)
+              ORDER BY c.updatedAt DESC
+              OFFSET @offset LIMIT @limit`,
       parameters: [
         { name: '@orgId', value: organizationId },
         { name: '@offset', value: offset },
@@ -69,6 +79,35 @@ export async function updateSessionMetadata(
   await container(SESSIONS).item(sessionId, organizationId).patch(operations);
 }
 
+/**
+ * Rename a session. Only the title is updated.
+ */
+export async function renameSession(
+  sessionId: string,
+  organizationId: string,
+  title: string,
+): Promise<void> {
+  await container(SESSIONS).item(sessionId, organizationId).patch([
+    { op: 'set', path: '/title', value: title.trim() },
+    { op: 'set', path: '/updatedAt', value: new Date().toISOString() },
+  ]);
+}
+
+/**
+ * Soft-delete a session by setting deletedAt.
+ * Messages are not deleted — they remain in Cosmos but are unreachable
+ * through the API since the session is excluded from all queries.
+ */
+export async function deleteSession(
+  sessionId: string,
+  organizationId: string,
+): Promise<void> {
+  await container(SESSIONS).item(sessionId, organizationId).patch([
+    { op: 'set', path: '/deletedAt', value: new Date().toISOString() },
+    { op: 'set', path: '/updatedAt', value: new Date().toISOString() },
+  ]);
+}
+
 // ─── Messages ─────────────────────────────────────────────────────────────────
 
 export async function saveMessage(doc: ChatMessage): Promise<ChatMessage> {
@@ -83,8 +122,10 @@ export async function getMessagesBySession(
 ): Promise<ChatMessage[]> {
   const { resources } = await container(MESSAGES)
     .items.query<ChatMessage>({
-      query:
-        'SELECT * FROM c WHERE c.sessionId = @sessionId AND c.organizationId = @orgId ORDER BY c.createdAt ASC',
+      query: `SELECT * FROM c
+              WHERE c.sessionId = @sessionId
+              AND c.organizationId = @orgId
+              ORDER BY c.createdAt ASC`,
       parameters: [
         { name: '@sessionId', value: sessionId },
         { name: '@orgId', value: organizationId },
