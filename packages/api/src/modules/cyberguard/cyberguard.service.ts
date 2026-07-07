@@ -1,9 +1,10 @@
 /**
  * CyberGuard AI — Chat Service
  *
- * Handles AI chat interactions via Azure OpenAI.
  * Sprint 1.5: sendChatMessage() — blocking response
- * Sprint 2.1: sendChatMessageStream() — token-by-token streaming via async generator
+ * Sprint 2.1: sendChatMessageStream() — streaming via async generator
+ * Sprint 2.2: Organisation context injected into system prompt
+ *             stream_options.include_usage for accurate token counts
  *
  * @see Blueprint §6.1 — CyberGuard AI Chat Module
  */
@@ -15,7 +16,7 @@ import type { AiRequestMetadata } from '@cyberguard/shared';
 
 // ─── System prompt ────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are CyberGuard AI, an expert cybersecurity assistant specialising in African and MENA enterprise security.
+const BASE_SYSTEM_PROMPT = `You are CyberGuard AI, an expert cybersecurity assistant specialising in African and MENA enterprise security.
 
 Your knowledge base covers:
 - Nigerian Data Protection Regulation (NDPR) and NITDA compliance requirements
@@ -39,7 +40,35 @@ Safety boundaries:
 - If asked about offensive techniques, redirect to defensive countermeasures
 - Always recommend professional security assessment for high-risk decisions`;
 
-// ─── Blocking response (Sprint 1.5 — kept as fallback) ───────────────────────
+export interface OrgContext {
+  name: string;
+  industry: string;
+  country: string;
+  plan: string;
+}
+
+/**
+ * Builds the full system prompt with optional organisation context.
+ * When org context is provided, responses are personalised to that organisation.
+ */
+function buildSystemPrompt(orgContext?: OrgContext): string {
+  if (!orgContext) return BASE_SYSTEM_PROMPT;
+
+  const contextBlock = `
+---
+**Current Organisation Context:**
+- Organisation: ${orgContext.name}
+- Industry: ${orgContext.industry}
+- Country: ${orgContext.country}
+- Plan: ${orgContext.plan}
+
+Tailor your responses to be directly relevant to this organisation's context.
+When giving examples or recommendations, reference their industry (${orgContext.industry}) and country (${orgContext.country}) where appropriate.`;
+
+  return BASE_SYSTEM_PROMPT + contextBlock;
+}
+
+// ─── Blocking response (Sprint 1.5) ──────────────────────────────────────────
 
 export interface ChatResult {
   response: string;
@@ -49,12 +78,13 @@ export interface ChatResult {
 export async function sendChatMessage(
   message: string,
   conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+  orgContext?: OrgContext,
 ): Promise<ChatResult> {
   const client = getOpenAIClient();
   const startTime = Date.now();
 
   const messages = [
-    { role: 'system' as const, content: SYSTEM_PROMPT },
+    { role: 'system' as const, content: buildSystemPrompt(orgContext) },
     ...conversationHistory,
     { role: 'user' as const, content: message },
   ];
@@ -109,7 +139,7 @@ export async function sendChatMessage(
   }
 }
 
-// ─── Streaming response (Sprint 2.1) ─────────────────────────────────────────
+// ─── Streaming response (Sprint 2.1 + 2.2) ───────────────────────────────────
 
 export interface StreamChunk {
   type: 'token' | 'done' | 'error';
@@ -118,25 +148,16 @@ export interface StreamChunk {
   error?: string;
 }
 
-/**
- * Async generator that yields token chunks as they arrive from OpenAI.
- * Caller is responsible for assembling the full response and persisting it.
- *
- * Usage:
- *   for await (const chunk of sendChatMessageStream(message, history)) {
- *     if (chunk.type === 'token') write(chunk.token);
- *     if (chunk.type === 'done') saveToDb(chunk.metadata);
- *   }
- */
 export async function* sendChatMessageStream(
   message: string,
   conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [],
+  orgContext?: OrgContext,
 ): AsyncGenerator<StreamChunk> {
   const client = getOpenAIClient();
   const startTime = Date.now();
 
   const messages = [
-    { role: 'system' as const, content: SYSTEM_PROMPT },
+    { role: 'system' as const, content: buildSystemPrompt(orgContext) },
     ...conversationHistory,
     { role: 'user' as const, content: message },
   ];
@@ -147,6 +168,7 @@ export async function* sendChatMessageStream(
       messages,
       max_completion_tokens: config.openai.maxTokens,
       stream: true,
+      stream_options: { include_usage: true }, // Sprint 2.2: get token counts on stream
     });
 
     let fullResponse = '';
@@ -161,7 +183,6 @@ export async function* sendChatMessageStream(
         yield { type: 'token', token };
       }
 
-      // Capture usage if provided in final chunk
       if (chunk.usage) {
         promptTokens = chunk.usage.prompt_tokens ?? 0;
         completionTokens = chunk.usage.completion_tokens ?? 0;
@@ -187,6 +208,7 @@ export async function* sendChatMessageStream(
       latencyMs,
       promptTokens,
       completionTokens,
+      totalTokens: promptTokens + completionTokens,
     });
 
     yield { type: 'done', metadata };

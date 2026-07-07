@@ -1,14 +1,8 @@
 /**
  * CyberGuard AI — Chat Router
  *
- * Mounted at /api/v1/cyberguard
- *
- * Sprint 1.5: POST /chat         — blocking JSON response
- * Sprint 1.6: GET  /sessions     — list sessions
- * Sprint 1.6: GET  /sessions/:id — session with messages
- * Sprint 2.1: POST /chat/stream  — SSE streaming response
- *
- * @see Blueprint §6.1 — CyberGuard AI Chat Module
+ * Sprint 2.2: Organisation context passed to AI service
+ *             Org fetched once per request and injected into system prompt
  */
 
 import { Router, type Request, type Response } from 'express';
@@ -17,7 +11,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { validate, validateQuery, paginationSchema } from '../../middleware/validate.middleware';
 import { requireAuth, requireOrganisation } from '../../middleware/auth.middleware';
-import { sendChatMessage, sendChatMessageStream } from './cyberguard.service';
+import { sendChatMessage, sendChatMessageStream, type OrgContext } from './cyberguard.service';
 import {
   createSession,
   getSessionById,
@@ -26,6 +20,7 @@ import {
   updateSessionMetadata,
   getMessagesBySession,
 } from '../../repositories/chat.repository';
+import { findOrganizationById } from '../../repositories/organizations.repository';
 import { ERROR_TYPES } from '@cyberguard/shared';
 import { config } from '../../config/env';
 
@@ -59,7 +54,22 @@ const chatSchema = z.object({
   sessionId: z.string().uuid('Invalid session ID').optional(),
 });
 
-// ─── Shared session + message helpers ────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+async function getOrgContext(organizationId: string): Promise<OrgContext | undefined> {
+  try {
+    const org = await findOrganizationById(organizationId);
+    if (!org) return undefined;
+    return {
+      name: org.name,
+      industry: org.settings.industry,
+      country: org.settings.country,
+      plan: org.plan,
+    };
+  } catch {
+    return undefined; // Non-critical — proceed without context if fetch fails
+  }
+}
 
 async function resolveSession(
   existingSessionId: string | undefined,
@@ -68,14 +78,9 @@ async function resolveSession(
   message: string,
 ) {
   const now = new Date().toISOString();
-
   if (existingSessionId) {
-    const session = await getSessionById(existingSessionId, organizationId);
-    if (!session) return null;
-    return session;
+    return getSessionById(existingSessionId, organizationId);
   }
-
-  // Create a new session
   const title = message.length > 60 ? `${message.substring(0, 57)}...` : message;
   return createSession({
     id: uuidv4(),
@@ -133,7 +138,7 @@ async function persistMessages(
   return assistantMsgId;
 }
 
-// ─── POST /chat/stream — SSE streaming (Sprint 2.1) ──────────────────────────
+// ─── POST /chat/stream ────────────────────────────────────────────────────────
 
 cyberguardRouter.post(
   '/chat/stream',
@@ -145,13 +150,11 @@ cyberguardRouter.post(
     const { message, sessionId: existingSessionId } = req.body;
     const { userId, organizationId } = req.user!;
 
-    // Resolve or create session before opening the stream
-    const session = await resolveSession(
-      existingSessionId,
-      userId,
-      organizationId!,
-      message,
-    );
+    // Fetch org context and session in parallel
+    const [orgContext, session] = await Promise.all([
+      getOrgContext(organizationId!),
+      resolveSession(existingSessionId, userId, organizationId!, message),
+    ]);
 
     if (existingSessionId && !session) {
       res.status(404).json({
@@ -164,7 +167,6 @@ cyberguardRouter.post(
       return;
     }
 
-    // Load conversation history for context
     const previousMessages = session && existingSessionId
       ? await getMessagesBySession(session.id, organizationId!)
       : [];
@@ -178,28 +180,24 @@ cyberguardRouter.post(
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+    res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
-    // Send session ID immediately so the client can update the URL
     res.write(`data: ${JSON.stringify({ type: 'session', sessionId: session!.id })}\n\n`);
 
-    // ── Stream tokens ────────────────────────────────────────────────────────
     let fullResponse = '';
     let streamMetadata: any = null;
 
     try {
-      for await (const chunk of sendChatMessageStream(message, conversationHistory)) {
-        if (req.socket.destroyed) break; // Client disconnected
+      for await (const chunk of sendChatMessageStream(message, conversationHistory, orgContext)) {
+        if (req.socket.destroyed) break;
 
         if (chunk.type === 'token') {
           fullResponse += chunk.token;
           res.write(`data: ${JSON.stringify({ type: 'token', token: chunk.token })}\n\n`);
         }
 
-        if (chunk.type === 'done') {
-          streamMetadata = chunk.metadata;
-        }
+        if (chunk.type === 'done') streamMetadata = chunk.metadata;
 
         if (chunk.type === 'error') {
           res.write(`data: ${JSON.stringify({ type: 'error', error: chunk.error })}\n\n`);
@@ -208,7 +206,6 @@ cyberguardRouter.post(
         }
       }
 
-      // ── Persist after stream completes ───────────────────────────────────
       const tokens = {
         prompt: streamMetadata?.promptTokens ?? 0,
         completion: streamMetadata?.completionTokens ?? 0,
@@ -225,7 +222,6 @@ cyberguardRouter.post(
         session!.messageCount,
       );
 
-      // Send final metadata event
       res.write(`data: ${JSON.stringify({
         type: 'done',
         sessionId: session!.id,
@@ -237,7 +233,7 @@ cyberguardRouter.post(
         },
       })}\n\n`);
 
-    } catch (err) {
+    } catch {
       res.write(`data: ${JSON.stringify({ type: 'error', error: 'Stream interrupted' })}\n\n`);
     } finally {
       res.end();
@@ -245,7 +241,7 @@ cyberguardRouter.post(
   },
 );
 
-// ─── POST /chat — Blocking fallback (Sprint 1.5) ─────────────────────────────
+// ─── POST /chat (blocking fallback) ──────────────────────────────────────────
 
 cyberguardRouter.post(
   '/chat',
@@ -259,16 +255,19 @@ cyberguardRouter.post(
     const now = new Date().toISOString();
 
     try {
-      let session = existingSessionId
-        ? await getSessionById(existingSessionId, organizationId!)
-        : null;
+      const [orgContext, sessionResult] = await Promise.all([
+        getOrgContext(organizationId!),
+        existingSessionId ? getSessionById(existingSessionId, organizationId!) : Promise.resolve(null),
+      ]);
+
+      let session = sessionResult;
 
       if (existingSessionId && !session) {
         res.status(404).json({
           type: ERROR_TYPES.NOT_FOUND,
           title: 'Session Not Found',
           status: 404,
-          detail: 'The specified chat session does not exist or belongs to another organisation.',
+          detail: 'The specified chat session does not exist.',
           instance: req.path,
         });
         return;
@@ -283,7 +282,7 @@ cyberguardRouter.post(
         }));
       }
 
-      const { response, metadata } = await sendChatMessage(message, conversationHistory);
+      const { response, metadata } = await sendChatMessage(message, conversationHistory, orgContext);
 
       if (!session) {
         const title = message.length > 60 ? `${message.substring(0, 57)}...` : message;
@@ -305,24 +304,14 @@ cyberguardRouter.post(
       };
 
       const assistantMsgId = await persistMessages(
-        session.id,
-        organizationId!,
-        userId,
-        message,
-        response,
-        tokens,
-        session.messageCount,
+        session.id, organizationId!, userId, message, response, tokens, session.messageCount,
       );
 
       res.status(200).json({
         response,
         sessionId: session.id,
         messageId: assistantMsgId,
-        metadata: {
-          model: metadata.model,
-          tokens,
-          latencyMs: metadata.latencyMs,
-        },
+        metadata: { model: metadata.model, tokens, latencyMs: metadata.latencyMs },
       });
     } catch (err: any) {
       if (err.code === 'AI_UNAVAILABLE') {
@@ -350,7 +339,6 @@ cyberguardRouter.get(
   async (req: Request, res: Response) => {
     const { organizationId } = req.user!;
     const { page, limit } = req.query as any;
-
     const sessions = await listSessions(organizationId!, Number(page), Number(limit));
     res.status(200).json({ sessions, page: Number(page), limit: Number(limit) });
   },
@@ -364,7 +352,7 @@ cyberguardRouter.get(
   requireOrganisation,
   async (req: Request, res: Response) => {
     const { organizationId } = req.user!;
-    const id = req.params["id"] as string;
+    const id = req.params['id'] as string;
 
     const session = await getSessionById(id, organizationId!);
     if (!session) {

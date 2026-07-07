@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type FormEvent } from 'react';
+import { useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -15,6 +15,30 @@ interface Message {
   tokens?: { total: number };
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API not available
+    }
+  }
+
+  return (
+    <button
+      className={`copy-btn ${copied ? 'copied' : ''}`}
+      onClick={handleCopy}
+      title="Copy to clipboard"
+    >
+      {copied ? '✓ Copied' : 'Copy'}
+    </button>
+  );
+}
+
 export function ChatPage() {
   const { sessionId: urlSessionId } = useParams<{ sessionId?: string }>();
   const navigate = useNavigate();
@@ -28,6 +52,9 @@ export function ChatPage() {
   const [error, setError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Sync state when URL param changes
+  useEffect(() => { setActiveSessionId(urlSessionId ?? null); }, [urlSessionId]);
 
   useEffect(() => {
     chatApi.listSessions().then(data => setSessions(data.sessions)).catch(() => {});
@@ -49,9 +76,12 @@ export function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Clean up stream on unmount
   useEffect(() => {
     return () => { abortRef.current?.abort(); };
+  }, []);
+
+  const refreshSessions = useCallback(() => {
+    chatApi.listSessions().then(d => setSessions(d.sessions)).catch(() => {});
   }, []);
 
   async function handleSend(e: FormEvent) {
@@ -66,10 +96,7 @@ export function ChatPage() {
     const userMsgId = `user-${Date.now()}`;
     const assistantMsgId = `stream-${Date.now()}`;
 
-    // Add user message immediately
     setMessages(prev => [...prev, { id: userMsgId, role: 'user', content: message }]);
-
-    // Add empty assistant message that will be streamed into
     setMessages(prev => [...prev, { id: assistantMsgId, role: 'assistant', content: '', streaming: true }]);
 
     const controller = new AbortController();
@@ -84,16 +111,11 @@ export function ChatPage() {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         credentials: 'include',
-        body: JSON.stringify({
-          message,
-          sessionId: activeSessionId ?? undefined,
-        }),
+        body: JSON.stringify({ message, sessionId: activeSessionId ?? undefined }),
         signal: controller.signal,
       });
 
-      if (!response.ok || !response.body) {
-        throw new Error('Stream request failed');
-      }
+      if (!response.ok || !response.body) throw new Error('Stream request failed');
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -122,9 +144,7 @@ export function ChatPage() {
 
             if (event.type === 'token') {
               setMessages(prev => prev.map(m =>
-                m.id === assistantMsgId
-                  ? { ...m, content: m.content + event.token }
-                  : m,
+                m.id === assistantMsgId ? { ...m, content: m.content + event.token } : m,
               ));
             }
 
@@ -135,26 +155,21 @@ export function ChatPage() {
                       ...m,
                       id: event.messageId ?? m.id,
                       streaming: false,
-                      tokens: event.metadata?.tokens?.total
+                      tokens: event.metadata?.tokens
                         ? { total: event.metadata.tokens.total }
                         : undefined,
                     }
                   : m,
               ));
-              // Refresh session list to show updated title/count
-              chatApi.listSessions().then(d => setSessions(d.sessions)).catch(() => {});
+              refreshSessions();
             }
 
-            if (event.type === 'error') {
-              throw new Error(event.error ?? 'Stream error');
-            }
-          } catch (parseErr) {
-            // Skip malformed SSE lines
-          }
+            if (event.type === 'error') throw new Error(event.error ?? 'Stream error');
+          } catch { /* skip malformed lines */ }
         }
       }
     } catch (err: any) {
-      if (err.name === 'AbortError') return; // User navigated away
+      if (err.name === 'AbortError') return;
       setMessages(prev => prev.filter(m => m.id !== assistantMsgId));
       setError(err.message ?? 'Failed to send message. Please try again.');
     } finally {
@@ -217,9 +232,7 @@ export function ChatPage() {
                 'How do I protect against BEC attacks?',
                 'Create an ISO 27001 gap analysis checklist',
               ].map(s => (
-                <button key={s} className="suggestion-chip" onClick={() => setInput(s)}>
-                  {s}
-                </button>
+                <button key={s} className="suggestion-chip" onClick={() => setInput(s)}>{s}</button>
               ))}
             </div>
           </div>
@@ -238,12 +251,22 @@ export function ChatPage() {
                   ) : (
                     <div className="message-text">{m.content}</div>
                   )}
-                  {m.role === 'assistant' && !m.streaming && m.tokens && (
-                    <div className="message-meta">{m.tokens.total} tokens</div>
-                  )}
-                  {m.role === 'assistant' && m.streaming && (
-                    <div className="message-meta streaming-indicator">CyberGuard AI is thinking...</div>
-                  )}
+                  <div className="message-actions">
+                    {m.role === 'assistant' && !m.streaming && (
+                      <>
+                        <CopyButton text={m.content} />
+                        {m.tokens && m.tokens.total > 0 && (
+                          <span className="message-meta">{m.tokens.total} tokens</span>
+                        )}
+                      </>
+                    )}
+                    {m.role === 'assistant' && m.streaming && (
+                      <span className="message-meta streaming-indicator">CyberGuard AI is thinking...</span>
+                    )}
+                    {m.role === 'user' && (
+                      <CopyButton text={m.content} />
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -258,10 +281,7 @@ export function ChatPage() {
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSend(e as any);
-              }
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e as any); }
             }}
             placeholder="Ask CyberGuard AI anything about cybersecurity..."
             rows={1}
