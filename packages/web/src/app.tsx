@@ -4,26 +4,26 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { LoginPage, RegisterPage } from './pages/AuthPages';
 import { DashboardPage } from './pages/DashboardPage';
 import { ChatPage } from './pages/ChatPage';
+import { ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from './pages/IdentityPages';
 
 export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <Routes>
+          {/* Public auth routes */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
-          <Route
-            path="/dashboard"
-            element={<ProtectedRoute><DashboardPage /></ProtectedRoute>}
-          />
-          <Route
-            path="/chat"
-            element={<ProtectedRoute><ChatPage /></ProtectedRoute>}
-          />
-          <Route
-            path="/chat/:sessionId"
-            element={<ProtectedRoute><ChatPage /></ProtectedRoute>}
-          />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
+
+          {/* Protected routes */}
+          <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+          <Route path="/chat" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+          <Route path="/chat/:sessionId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
+
+          {/* Redirects */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

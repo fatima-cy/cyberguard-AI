@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/auth.context';
 import { ApiError } from '../api/client';
 
@@ -8,6 +8,9 @@ import { ApiError } from '../api/client';
 export function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const resetSuccess = searchParams.get('reset') === 'success';
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -34,30 +37,32 @@ export function LoginPage() {
         <h1 className="auth-title">Sign in</h1>
         <p className="auth-subtitle">AI-native cybersecurity for African enterprises</p>
 
+        {resetSuccess && (
+          <div className="auth-success">
+            Password reset successfully. Sign in with your new password.
+          </div>
+        )}
+
         {error && <div className="auth-error">{error}</div>}
 
         <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
             <label htmlFor="email">Email</label>
             <input
-              id="email"
-              type="email"
-              value={email}
+              id="email" type="email" value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="you@company.com"
-              required
-              autoFocus
+              placeholder="you@company.com" required autoFocus
             />
           </div>
           <div className="form-group">
-            <label htmlFor="password">Password</label>
+            <div className="form-label-row">
+              <label htmlFor="password">Password</label>
+              <Link to="/forgot-password" className="forgot-link">Forgot password?</Link>
+            </div>
             <input
-              id="password"
-              type="password"
-              value={password}
+              id="password" type="password" value={password}
               onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
+              placeholder="••••••••" required
             />
           </div>
           <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
@@ -131,37 +136,15 @@ export function RegisterPage() {
             <form onSubmit={handleAccountSubmit} className="auth-form">
               <div className="form-group">
                 <label htmlFor="name">Full name</label>
-                <input
-                  id="name"
-                  type="text"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  placeholder="Fatima Umar"
-                  required
-                  autoFocus
-                />
+                <input id="name" type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Fatima Umar" required autoFocus />
               </div>
               <div className="form-group">
                 <label htmlFor="email">Email</label>
-                <input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  placeholder="you@company.com"
-                  required
-                />
+                <input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required />
               </div>
               <div className="form-group">
                 <label htmlFor="password">Password</label>
-                <input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder="Min 8 chars, 1 uppercase, 1 number"
-                  required
-                />
+                <input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min 8 chars, 1 uppercase, 1 number" required />
               </div>
               <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
                 {loading ? 'Creating account...' : 'Continue'}
@@ -176,21 +159,14 @@ export function RegisterPage() {
           <>
             <h1 className="auth-title">Create your organisation</h1>
             <p className="auth-subtitle">Your workspace for CyberGuard AI</p>
+            <div className="auth-info">📧 A verification email has been sent to <strong>{email}</strong></div>
 
             {error && <div className="auth-error">{error}</div>}
 
             <form onSubmit={handleOrgSubmit} className="auth-form">
               <div className="form-group">
                 <label htmlFor="orgName">Organisation name</label>
-                <input
-                  id="orgName"
-                  type="text"
-                  value={orgName}
-                  onChange={e => setOrgName(e.target.value)}
-                  placeholder="CloudSecure Solutions Ltd"
-                  required
-                  autoFocus
-                />
+                <input id="orgName" type="text" value={orgName} onChange={e => setOrgName(e.target.value)} placeholder="CloudSecure Solutions Ltd" required autoFocus />
               </div>
               <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
                 {loading ? 'Creating...' : 'Launch my workspace →'}
