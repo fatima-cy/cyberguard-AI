@@ -436,3 +436,161 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
   width: 100%;
   margin: 0.25rem 0;
 }
+/* Sprint 2.4 — Security Score + Recent Activity
+   Append to packages/web/src/app.css */
+
+/* ── Panel subtitle ── */
+.panel-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+/* ── Security Score card ── */
+.stat-card-score {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+}
+
+.score-ring-wrapper {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+}
+
+.score-ring-value {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.stat-score-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-value-sm {
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+/* ── Plan badge ── */
+.plan-badge {
+  background: rgba(59,130,246,0.1);
+  border: 1px solid rgba(59,130,246,0.2);
+  border-radius: 4px;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--primary);
+  letter-spacing: 0.05em;
+}
+
+/* ── Recent Activity section ── */
+.activity-section {
+  padding: 0 2rem 2rem;
+}
+
+.activity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.875rem;
+}
+
+.activity-header h2 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.activity-view-all {
+  font-size: 0.8125rem;
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.activity-view-all:hover {
+  text-decoration: underline;
+}
+
+.activity-empty {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.activity-empty a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.activity-item {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.875rem 1rem;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.activity-item:hover {
+  border-color: var(--primary);
+  background: rgba(59,130,246,0.05);
+}
+
+.activity-icon {
+  font-size: 1.125rem;
+  flex-shrink: 0;
+}
+
+.activity-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.activity-title {
+  font-size: 0.9375rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 0.2rem;
+}
+
+.activity-meta {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.activity-arrow {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.activity-item:hover .activity-arrow {
+  transform: translateX(3px);
+  color: var(--primary);
+}
