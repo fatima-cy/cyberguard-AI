@@ -3,11 +3,10 @@
  *
  * Mounted at /api/v1/cyberguard
  *
- * Sprint 1.5: POST /chat (single message)
- * Sprint 1.6: Session management + message persistence added
- *   - POST /chat       auto-creates session, persists messages
- *   - GET  /sessions   list sessions for org
- *   - GET  /sessions/:id  get session with full message history
+ * Sprint 1.5: POST /chat         — blocking JSON response
+ * Sprint 1.6: GET  /sessions     — list sessions
+ * Sprint 1.6: GET  /sessions/:id — session with messages
+ * Sprint 2.1: POST /chat/stream  — SSE streaming response
  *
  * @see Blueprint §6.1 — CyberGuard AI Chat Module
  */
@@ -18,7 +17,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { validate, validateQuery, paginationSchema } from '../../middleware/validate.middleware';
 import { requireAuth, requireOrganisation } from '../../middleware/auth.middleware';
-import { sendChatMessage } from './cyberguard.service';
+import { sendChatMessage, sendChatMessageStream } from './cyberguard.service';
 import {
   createSession,
   getSessionById,
@@ -60,7 +59,193 @@ const chatSchema = z.object({
   sessionId: z.string().uuid('Invalid session ID').optional(),
 });
 
-// ─── POST /chat ───────────────────────────────────────────────────────────────
+// ─── Shared session + message helpers ────────────────────────────────────────
+
+async function resolveSession(
+  existingSessionId: string | undefined,
+  userId: string,
+  organizationId: string,
+  message: string,
+) {
+  const now = new Date().toISOString();
+
+  if (existingSessionId) {
+    const session = await getSessionById(existingSessionId, organizationId);
+    if (!session) return null;
+    return session;
+  }
+
+  // Create a new session
+  const title = message.length > 60 ? `${message.substring(0, 57)}...` : message;
+  return createSession({
+    id: uuidv4(),
+    organizationId,
+    userId,
+    title,
+    createdAt: now,
+    updatedAt: now,
+    messageCount: 0,
+  });
+}
+
+async function persistMessages(
+  sessionId: string,
+  organizationId: string,
+  userId: string,
+  userMessage: string,
+  assistantResponse: string,
+  tokens: { prompt: number; completion: number; total: number },
+  currentMessageCount: number,
+): Promise<string> {
+  const now = new Date().toISOString();
+  const assistantMsgId = uuidv4();
+
+  await saveMessage({
+    id: uuidv4(),
+    sessionId,
+    organizationId,
+    userId,
+    role: 'user',
+    content: userMessage,
+    createdAt: now,
+  });
+
+  await saveMessage({
+    id: assistantMsgId,
+    sessionId,
+    organizationId,
+    userId,
+    role: 'assistant',
+    content: assistantResponse,
+    createdAt: new Date().toISOString(),
+    tokens: {
+      prompt: tokens.prompt,
+      completion: tokens.completion,
+      total: tokens.total,
+    },
+  });
+
+  await updateSessionMetadata(sessionId, organizationId, {
+    messageCount: currentMessageCount + 2,
+    updatedAt: new Date().toISOString(),
+  });
+
+  return assistantMsgId;
+}
+
+// ─── POST /chat/stream — SSE streaming (Sprint 2.1) ──────────────────────────
+
+cyberguardRouter.post(
+  '/chat/stream',
+  requireAuth,
+  requireOrganisation,
+  aiRateLimiter,
+  validate(chatSchema),
+  async (req: Request, res: Response) => {
+    const { message, sessionId: existingSessionId } = req.body;
+    const { userId, organizationId } = req.user!;
+
+    // Resolve or create session before opening the stream
+    const session = await resolveSession(
+      existingSessionId,
+      userId,
+      organizationId!,
+      message,
+    );
+
+    if (existingSessionId && !session) {
+      res.status(404).json({
+        type: ERROR_TYPES.NOT_FOUND,
+        title: 'Session Not Found',
+        status: 404,
+        detail: 'The specified chat session does not exist.',
+        instance: req.path,
+      });
+      return;
+    }
+
+    // Load conversation history for context
+    const previousMessages = session && existingSessionId
+      ? await getMessagesBySession(session.id, organizationId!)
+      : [];
+
+    const conversationHistory = previousMessages.map(m => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    }));
+
+    // ── Open SSE connection ──────────────────────────────────────────────────
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+    res.flushHeaders();
+
+    // Send session ID immediately so the client can update the URL
+    res.write(`data: ${JSON.stringify({ type: 'session', sessionId: session!.id })}\n\n`);
+
+    // ── Stream tokens ────────────────────────────────────────────────────────
+    let fullResponse = '';
+    let streamMetadata: any = null;
+
+    try {
+      for await (const chunk of sendChatMessageStream(message, conversationHistory)) {
+        if (req.socket.destroyed) break; // Client disconnected
+
+        if (chunk.type === 'token') {
+          fullResponse += chunk.token;
+          res.write(`data: ${JSON.stringify({ type: 'token', token: chunk.token })}\n\n`);
+        }
+
+        if (chunk.type === 'done') {
+          streamMetadata = chunk.metadata;
+        }
+
+        if (chunk.type === 'error') {
+          res.write(`data: ${JSON.stringify({ type: 'error', error: chunk.error })}\n\n`);
+          res.end();
+          return;
+        }
+      }
+
+      // ── Persist after stream completes ───────────────────────────────────
+      const tokens = {
+        prompt: streamMetadata?.promptTokens ?? 0,
+        completion: streamMetadata?.completionTokens ?? 0,
+        total: streamMetadata?.totalTokens ?? 0,
+      };
+
+      const assistantMsgId = await persistMessages(
+        session!.id,
+        organizationId!,
+        userId,
+        message,
+        fullResponse,
+        tokens,
+        session!.messageCount,
+      );
+
+      // Send final metadata event
+      res.write(`data: ${JSON.stringify({
+        type: 'done',
+        sessionId: session!.id,
+        messageId: assistantMsgId,
+        metadata: {
+          model: streamMetadata?.model ?? config.openai.deploymentName,
+          tokens,
+          latencyMs: streamMetadata?.latencyMs ?? 0,
+        },
+      })}\n\n`);
+
+    } catch (err) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: 'Stream interrupted' })}\n\n`);
+    } finally {
+      res.end();
+    }
+  },
+);
+
+// ─── POST /chat — Blocking fallback (Sprint 1.5) ─────────────────────────────
 
 cyberguardRouter.post(
   '/chat',
@@ -74,7 +259,6 @@ cyberguardRouter.post(
     const now = new Date().toISOString();
 
     try {
-      // 1. Resolve or create session
       let session = existingSessionId
         ? await getSessionById(existingSessionId, organizationId!)
         : null;
@@ -90,7 +274,6 @@ cyberguardRouter.post(
         return;
       }
 
-      // Load conversation history for context if continuing a session
       let conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
       if (session) {
         const previousMessages = await getMessagesBySession(session.id, organizationId!);
@@ -100,12 +283,9 @@ cyberguardRouter.post(
         }));
       }
 
-      // 2. Call OpenAI
       const { response, metadata } = await sendChatMessage(message, conversationHistory);
 
-      // 3. Create session if new
       if (!session) {
-        // Generate title from first 60 chars of the user's message
         const title = message.length > 60 ? `${message.substring(0, 57)}...` : message;
         session = await createSession({
           id: uuidv4(),
@@ -118,39 +298,21 @@ cyberguardRouter.post(
         });
       }
 
-      // 4. Persist user message
-      await saveMessage({
-        id: uuidv4(),
-        sessionId: session.id,
-        organizationId: organizationId!,
-        userId,
-        role: 'user',
-        content: message,
-        createdAt: now,
-      });
+      const tokens = {
+        prompt: metadata.promptTokens,
+        completion: metadata.completionTokens,
+        total: metadata.totalTokens,
+      };
 
-      // 5. Persist assistant response
-      const assistantMsgId = uuidv4();
-      await saveMessage({
-        id: assistantMsgId,
-        sessionId: session.id,
-        organizationId: organizationId!,
+      const assistantMsgId = await persistMessages(
+        session.id,
+        organizationId!,
         userId,
-        role: 'assistant',
-        content: response,
-        createdAt: new Date().toISOString(),
-        tokens: {
-          prompt: metadata.promptTokens,
-          completion: metadata.completionTokens,
-          total: metadata.totalTokens,
-        },
-      });
-
-      // 6. Update session metadata
-      await updateSessionMetadata(session.id, organizationId!, {
-        messageCount: session.messageCount + 2,
-        updatedAt: new Date().toISOString(),
-      });
+        message,
+        response,
+        tokens,
+        session.messageCount,
+      );
 
       res.status(200).json({
         response,
@@ -158,11 +320,7 @@ cyberguardRouter.post(
         messageId: assistantMsgId,
         metadata: {
           model: metadata.model,
-          tokens: {
-            prompt: metadata.promptTokens,
-            completion: metadata.completionTokens,
-            total: metadata.totalTokens,
-          },
+          tokens,
           latencyMs: metadata.latencyMs,
         },
       });
@@ -206,7 +364,7 @@ cyberguardRouter.get(
   requireOrganisation,
   async (req: Request, res: Response) => {
     const { organizationId } = req.user!;
-    const { id } = req.params;
+    const id = req.params["id"] as string;
 
     const session = await getSessionById(id, organizationId!);
     if (!session) {
