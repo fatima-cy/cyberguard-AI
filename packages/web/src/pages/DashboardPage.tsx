@@ -2,22 +2,11 @@ import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/auth.context';
 import { dashboardApi, chatApi, type DashboardSummary } from '../api/dashboard.api';
+import { Layout } from '../components/Layout';
 import type { ChatSession } from '@cyberguard/shared';
 
 // ─── Security Score ───────────────────────────────────────────────────────────
 
-/**
- * Static rule-based security score for Sprint 2.
- * Sprint 3 will replace this with an AI-driven assessment.
- *
- * Scoring:
- *   30  — baseline (account created)
- *   +20 — actively using the platform (≥1 conversation)
- *   +15 — organisation fully configured (country + industry set)
- *   +10 — high-risk industry awareness (fintech, healthcare, government)
- *   +15 — professional/enterprise plan
- *   +10 — team has more than 1 member
- */
 function calculateSecurityScore(summary: DashboardSummary): number {
   let score = 30;
   if (summary.stats.conversations >= 1) score += 20;
@@ -41,36 +30,48 @@ function scoreLabel(score: number): string {
   return 'Needs Attention';
 }
 
-// ─── Score ring component ─────────────────────────────────────────────────────
-
 function ScoreRing({ score }: { score: number }) {
   const radius = 28;
   const circumference = 2 * Math.PI * radius;
   const progress = (score / 100) * circumference;
   const color = scoreColor(score);
-
   return (
     <div className="score-ring-wrapper">
       <svg width="72" height="72" viewBox="0 0 72 72">
         <circle cx="36" cy="36" r={radius} fill="none" stroke="var(--border)" strokeWidth="6" />
-        <circle
-          cx="36" cy="36" r={radius} fill="none"
-          stroke={color} strokeWidth="6"
-          strokeDasharray={`${progress} ${circumference}`}
-          strokeLinecap="round"
-          transform="rotate(-90 36 36)"
-          style={{ transition: 'stroke-dasharray 1s ease' }}
-        />
+        <circle cx="36" cy="36" r={radius} fill="none" stroke={color} strokeWidth="6"
+          strokeDasharray={`${progress} ${circumference}`} strokeLinecap="round"
+          transform="rotate(-90 36 36)" style={{ transition: 'stroke-dasharray 1s ease' }} />
       </svg>
       <div className="score-ring-value" style={{ color }}>{score}</div>
     </div>
   );
 }
 
+// ─── Skeleton ─────────────────────────────────────────────────────────────────
+
+function DashboardSkeleton() {
+  return (
+    <>
+      <div className="stats-grid" style={{ padding: '1.5rem 2rem 0' }}>
+        {[1,2,3,4].map(i => <div key={i} className="stat-card"><div className="skeleton skeleton-stat" /></div>)}
+      </div>
+      <div className="info-grid" style={{ padding: '1.25rem 2rem' }}>
+        <div className="info-card">
+          {[1,2,3,4].map(i => <div key={i} className="skeleton skeleton-row" />)}
+        </div>
+        <div className="info-card">
+          {[1,2,3].map(i => <div key={i} className="skeleton skeleton-row" />)}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── DashboardPage ────────────────────────────────────────────────────────────
 
 export function DashboardPage() {
-  const { logout } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [recentSessions, setRecentSessions] = useState<ChatSession[]>([]);
@@ -78,23 +79,15 @@ export function DashboardPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    Promise.all([
-      dashboardApi.getSummary(),
-      chatApi.listSessions(1, 5),
-    ])
-      .then(([summaryData, sessionsData]) => {
-        setSummary(summaryData);
-        setRecentSessions(sessionsData.sessions);
-      })
+    Promise.all([dashboardApi.getSummary(), chatApi.listSessions(1, 5)])
+      .then(([s, d]) => { setSummary(s); setRecentSessions(d.sessions); })
       .catch(() => setError('Failed to load dashboard.'))
       .finally(() => setLoading(false));
   }, []);
 
   function formatDate(iso: string | null): string {
     if (!iso) return 'Never';
-    return new Date(iso).toLocaleDateString('en-NG', {
-      day: 'numeric', month: 'short', year: 'numeric',
-    });
+    return new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
   }
 
   function formatRelativeTime(iso: string): string {
@@ -110,90 +103,55 @@ export function DashboardPage() {
   }
 
   const securityScore = summary ? calculateSecurityScore(summary) : 0;
+  const firstName = summary?.user.name.split(' ')[0] ?? user?.name?.split(' ')[0] ?? '';
 
   return (
-    <div className="app-shell">
-      <nav className="sidebar">
-        <div className="sidebar-logo">🛡️ CyberGuard AI</div>
-        <ul className="sidebar-nav">
-          <li className="active"><Link to="/dashboard">Dashboard</Link></li>
-          <li><Link to="/chat">AI Assistant</Link></li>
-        </ul>
-        <div className="sidebar-footer">
-          <span className="sidebar-user">{summary?.user.email ?? '...'}</span>
-          <button className="btn btn-ghost btn-sm" onClick={logout}>Sign out</button>
-        </div>
-      </nav>
-
+    <Layout userEmail={summary?.user.email ?? user?.email}>
       <main className="main-panel">
         <header className="panel-header">
           <div>
             <h1>Dashboard</h1>
-            {summary && <p className="panel-subtitle">Welcome back, {summary.user.name.split(' ')[0]}</p>}
+            {firstName && <p className="panel-subtitle">Welcome back, {firstName}</p>}
           </div>
           <Link to="/chat" className="btn btn-primary">New conversation →</Link>
         </header>
 
-        {loading && <div className="panel-loading">Loading...</div>}
-        {error && <div className="panel-error">{error}</div>}
+        {loading && <DashboardSkeleton />}
+        {error && <div className="panel-error" style={{ padding: '2rem' }}>{error}</div>}
 
         {summary && (
           <>
-            {/* ── Stats row ── */}
             <div className="stats-grid">
               <div className="stat-card">
                 <div className="stat-value">{summary.stats.conversations}</div>
                 <div className="stat-label">Conversations</div>
               </div>
-
-              {/* Security Score replaces Plan card */}
               <div className="stat-card stat-card-score">
                 <ScoreRing score={securityScore} />
                 <div className="stat-score-info">
-                  <div className="stat-value-sm" style={{ color: scoreColor(securityScore) }}>
-                    {scoreLabel(securityScore)}
-                  </div>
+                  <div className="stat-value-sm" style={{ color: scoreColor(securityScore) }}>{scoreLabel(securityScore)}</div>
                   <div className="stat-label">Security Score</div>
                 </div>
               </div>
-
               <div className="stat-card">
                 <div className="stat-value">{summary.organization.memberCount}</div>
                 <div className="stat-label">Team members</div>
               </div>
-
               <div className="stat-card">
                 <div className="stat-value">{formatDate(summary.stats.lastActive)}</div>
                 <div className="stat-label">Last active</div>
               </div>
             </div>
 
-            {/* ── Info + CTA row ── */}
             <div className="info-grid">
               <div className="info-card">
                 <h2>Organisation</h2>
-                <div className="info-row">
-                  <span>Name</span>
-                  <strong>{summary.organization.name}</strong>
-                </div>
-                <div className="info-row">
-                  <span>Country</span>
-                  <strong>{summary.organization.settings.country}</strong>
-                </div>
-                <div className="info-row">
-                  <span>Industry</span>
-                  <strong>{summary.organization.settings.industry}</strong>
-                </div>
-                <div className="info-row">
-                  <span>Plan</span>
-                  <strong className="plan-badge">{summary.organization.plan.toUpperCase()}</strong>
-                </div>
-                <div className="info-row">
-                  <span>Role</span>
-                  <strong>{summary.user.role.replace('_', ' ')}</strong>
-                </div>
+                <div className="info-row"><span>Name</span><strong>{summary.organization.name}</strong></div>
+                <div className="info-row"><span>Country</span><strong>{summary.organization.settings.country}</strong></div>
+                <div className="info-row"><span>Industry</span><strong>{summary.organization.settings.industry}</strong></div>
+                <div className="info-row"><span>Plan</span><strong className="plan-badge">{summary.organization.plan.toUpperCase()}</strong></div>
+                <div className="info-row"><span>Role</span><strong>{summary.user.role.replace('_', ' ')}</strong></div>
               </div>
-
               <div className="info-card cta-card">
                 <div className="cta-icon">💬</div>
                 <h2>CyberGuard AI Assistant</h2>
@@ -202,13 +160,11 @@ export function DashboardPage() {
               </div>
             </div>
 
-            {/* ── Recent Activity ── */}
             <div className="activity-section">
               <div className="activity-header">
                 <h2>Recent Activity</h2>
                 <Link to="/chat" className="activity-view-all">View all →</Link>
               </div>
-
               {recentSessions.length === 0 ? (
                 <div className="activity-empty">
                   <p>No conversations yet. <Link to="/chat">Start your first one →</Link></p>
@@ -216,17 +172,11 @@ export function DashboardPage() {
               ) : (
                 <div className="activity-list">
                   {recentSessions.map(session => (
-                    <button
-                      key={session.id}
-                      className="activity-item"
-                      onClick={() => navigate(`/chat/${session.id}`)}
-                    >
+                    <button key={session.id} className="activity-item" onClick={() => navigate(`/chat/${session.id}`)}>
                       <div className="activity-icon">💬</div>
                       <div className="activity-content">
                         <div className="activity-title">{session.title}</div>
-                        <div className="activity-meta">
-                          {session.messageCount} messages · {formatRelativeTime(session.updatedAt)}
-                        </div>
+                        <div className="activity-meta">{session.messageCount} messages · {formatRelativeTime(session.updatedAt)}</div>
                       </div>
                       <div className="activity-arrow">→</div>
                     </button>
@@ -237,6 +187,6 @@ export function DashboardPage() {
           </>
         )}
       </main>
-    </div>
+    </Layout>
   );
 }

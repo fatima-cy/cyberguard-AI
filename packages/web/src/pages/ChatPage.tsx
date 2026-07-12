@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback, type FormEvent, type KeyboardEvent } from 'react';
-import { Link, useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAuth } from '../context/auth.context';
 import { chatApi } from '../api/dashboard.api';
 import { getAccessToken } from '../api/client';
+import { Layout } from '../components/Layout';
 import type { ChatSession } from '@cyberguard/shared';
 
 interface Message {
@@ -14,8 +15,6 @@ interface Message {
   streaming?: boolean;
   tokens?: { total: number };
 }
-
-// ─── CopyButton ───────────────────────────────────────────────────────────────
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -29,35 +28,22 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-// ─── SessionItem ──────────────────────────────────────────────────────────────
-
 function SessionItem({
-  session,
-  isActive,
-  onSelect,
-  onRename,
-  onDelete,
+  session, isActive, onSelect, onRename, onDelete,
 }: {
-  session: ChatSession;
-  isActive: boolean;
-  onSelect: () => void;
-  onRename: (id: string, title: string) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  session: ChatSession; isActive: boolean;
+  onSelect: () => void; onRename: (id: string, title: string) => Promise<void>; onDelete: (id: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(session.title);
   const [confirming, setConfirming] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (editing) inputRef.current?.focus();
-  }, [editing]);
+  useEffect(() => { if (editing) inputRef.current?.focus(); }, [editing]);
 
   async function handleRenameSubmit() {
     const trimmed = editValue.trim();
-    if (trimmed && trimmed !== session.title) {
-      await onRename(session.id, trimmed);
-    }
+    if (trimmed && trimmed !== session.title) await onRename(session.id, trimmed);
     setEditing(false);
   }
 
@@ -75,34 +61,19 @@ function SessionItem({
   return (
     <div className={`session-item-wrapper ${isActive ? 'active' : ''}`}>
       {editing ? (
-        <input
-          ref={inputRef}
-          className="session-rename-input"
-          value={editValue}
-          onChange={e => setEditValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onBlur={handleRenameSubmit}
-          maxLength={100}
-        />
+        <input ref={inputRef} className="session-rename-input" value={editValue}
+          onChange={e => setEditValue(e.target.value)} onKeyDown={handleKeyDown}
+          onBlur={handleRenameSubmit} maxLength={100} />
       ) : (
         <button className="session-item-btn" onClick={onSelect}>
           <span className="session-title">{session.title}</span>
           <span className="session-count">{session.messageCount} msgs</span>
         </button>
       )}
-
       {!editing && (
         <div className="session-actions">
-          <button
-            className="session-action-btn"
-            onClick={e => { e.stopPropagation(); setEditing(true); setEditValue(session.title); }}
-            title="Rename"
-          >✏️</button>
-          <button
-            className={`session-action-btn ${confirming ? 'danger' : ''}`}
-            onClick={e => { e.stopPropagation(); handleDelete(); }}
-            title={confirming ? 'Click again to confirm delete' : 'Delete'}
-          >
+          <button className="session-action-btn" onClick={e => { e.stopPropagation(); setEditing(true); setEditValue(session.title); }} title="Rename">✏️</button>
+          <button className={`session-action-btn ${confirming ? 'danger' : ''}`} onClick={e => { e.stopPropagation(); handleDelete(); }} title={confirming ? 'Confirm delete' : 'Delete'}>
             {confirming ? '⚠️' : '🗑️'}
           </button>
         </div>
@@ -111,14 +82,13 @@ function SessionItem({
   );
 }
 
-// ─── ChatPage ─────────────────────────────────────────────────────────────────
-
 export function ChatPage() {
   const { sessionId: urlSessionId } = useParams<{ sessionId?: string }>();
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { user } = useAuth();
 
   const [allSessions, setAllSessions] = useState<ChatSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [activeSessionId, setActiveSessionId] = useState<string | null>(urlSessionId ?? null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -127,8 +97,8 @@ export function ChatPage() {
   const [error, setError] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Client-side filtered sessions
   const sessions = search.trim()
     ? allSessions.filter(s => s.title.toLowerCase().includes(search.toLowerCase()))
     : allSessions;
@@ -139,25 +109,33 @@ export function ChatPage() {
     chatApi.listSessions().then(d => setAllSessions(d.sessions)).catch(() => {});
   }, []);
 
-  useEffect(() => { refreshSessions(); }, [refreshSessions]);
+  useEffect(() => {
+    chatApi.listSessions()
+      .then(d => setAllSessions(d.sessions))
+      .catch(() => {})
+      .finally(() => setSessionsLoading(false));
+  }, []);
 
   useEffect(() => {
     if (!activeSessionId) { setMessages([]); return; }
     chatApi.getSession(activeSessionId).then(data => {
       setMessages(data.messages.map(m => ({
-        id: m.id,
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
+        id: m.id, role: m.role as 'user' | 'assistant', content: m.content,
         tokens: m.tokens ? { total: m.tokens.total } : undefined,
       })));
     }).catch(() => setError('Failed to load conversation.'));
   }, [activeSessionId]);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
   useEffect(() => { return () => { abortRef.current?.abort(); }; }, []);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
+    }
+  }, [input]);
 
   async function handleRename(id: string, title: string) {
     await chatApi.renameSession(id, title);
@@ -167,11 +145,7 @@ export function ChatPage() {
   async function handleDelete(id: string) {
     await chatApi.deleteSession(id);
     setAllSessions(prev => prev.filter(s => s.id !== id));
-    if (activeSessionId === id) {
-      setActiveSessionId(null);
-      setMessages([]);
-      navigate('/chat', { replace: true });
-    }
+    if (activeSessionId === id) { setActiveSessionId(null); setMessages([]); navigate('/chat', { replace: true }); }
   }
 
   async function handleSend(e: FormEvent) {
@@ -219,7 +193,6 @@ export function ChatPage() {
           if (!line.startsWith('data: ')) continue;
           const data = line.slice(6).trim();
           if (!data) continue;
-
           try {
             const event = JSON.parse(data);
             if (event.type === 'session' && !activeSessionId) {
@@ -227,16 +200,12 @@ export function ChatPage() {
               navigate(`/chat/${event.sessionId}`, { replace: true });
             }
             if (event.type === 'token') {
-              setMessages(prev => prev.map(m =>
-                m.id === assistantMsgId ? { ...m, content: m.content + event.token } : m,
-              ));
+              setMessages(prev => prev.map(m => m.id === assistantMsgId ? { ...m, content: m.content + event.token } : m));
             }
             if (event.type === 'done') {
-              setMessages(prev => prev.map(m =>
-                m.id === assistantMsgId
-                  ? { ...m, id: event.messageId ?? m.id, streaming: false, tokens: event.metadata?.tokens ? { total: event.metadata.tokens.total } : undefined }
-                  : m,
-              ));
+              setMessages(prev => prev.map(m => m.id === assistantMsgId
+                ? { ...m, id: event.messageId ?? m.id, streaming: false, tokens: event.metadata?.tokens ? { total: event.metadata.tokens.total } : undefined }
+                : m));
               refreshSessions();
             }
             if (event.type === 'error') throw new Error(event.error ?? 'Stream error');
@@ -260,53 +229,38 @@ export function ChatPage() {
     navigate('/chat', { replace: true });
   }
 
+  const sidebarContent = (
+    <>
+      <button className="btn btn-ghost btn-sm new-chat-btn" onClick={startNewChat}>
+        + New conversation
+      </button>
+
+      <div className="session-search-wrapper">
+        <input className="session-search" type="text" placeholder="Search conversations..."
+          value={search} onChange={e => setSearch(e.target.value)} />
+        {search && <button className="session-search-clear" onClick={() => setSearch('')}>✕</button>}
+      </div>
+
+      <div className="session-list">
+        {sessionsLoading && (
+          <>
+            {[1,2,3].map(i => <div key={i} className="skeleton skeleton-row" style={{ borderRadius: 8, margin: '0 0 4px' }} />)}
+          </>
+        )}
+        {!sessionsLoading && sessions.length === 0 && search && (
+          <p className="session-empty">No conversations match "{search}"</p>
+        )}
+        {sessions.map(s => (
+          <SessionItem key={s.id} session={s} isActive={s.id === activeSessionId}
+            onSelect={() => { abortRef.current?.abort(); setActiveSessionId(s.id); navigate(`/chat/${s.id}`); }}
+            onRename={handleRename} onDelete={handleDelete} />
+        ))}
+      </div>
+    </>
+  );
+
   return (
-    <div className="app-shell">
-      <nav className="sidebar">
-        <div className="sidebar-logo">🛡️ CyberGuard AI</div>
-        <ul className="sidebar-nav">
-          <li><Link to="/dashboard">Dashboard</Link></li>
-          <li className="active"><Link to="/chat">AI Assistant</Link></li>
-        </ul>
-
-        <button className="btn btn-ghost btn-sm new-chat-btn" onClick={startNewChat}>
-          + New conversation
-        </button>
-
-        <div className="session-search-wrapper">
-          <input
-            className="session-search"
-            type="text"
-            placeholder="Search conversations..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          {search && (
-            <button className="session-search-clear" onClick={() => setSearch('')}>✕</button>
-          )}
-        </div>
-
-        <div className="session-list">
-          {sessions.length === 0 && search && (
-            <p className="session-empty">No conversations match "{search}"</p>
-          )}
-          {sessions.map(s => (
-            <SessionItem
-              key={s.id}
-              session={s}
-              isActive={s.id === activeSessionId}
-              onSelect={() => { abortRef.current?.abort(); setActiveSessionId(s.id); navigate(`/chat/${s.id}`); }}
-              onRename={handleRename}
-              onDelete={handleDelete}
-            />
-          ))}
-        </div>
-
-        <div className="sidebar-footer">
-          <button className="btn btn-ghost btn-sm" onClick={logout}>Sign out</button>
-        </div>
-      </nav>
-
+    <Layout sidebar={sidebarContent} userEmail={user?.email}>
       <main className="chat-panel">
         {messages.length === 0 ? (
           <div className="chat-empty">
@@ -336,14 +290,9 @@ export function ChatPage() {
                   )}
                   <div className="message-actions">
                     {m.role === 'assistant' && !m.streaming && (
-                      <>
-                        <CopyButton text={m.content} />
-                        {m.tokens && m.tokens.total > 0 && <span className="message-meta">{m.tokens.total} tokens</span>}
-                      </>
+                      <><CopyButton text={m.content} />{m.tokens && m.tokens.total > 0 && <span className="message-meta">{m.tokens.total} tokens</span>}</>
                     )}
-                    {m.role === 'assistant' && m.streaming && (
-                      <span className="message-meta streaming-indicator">CyberGuard AI is thinking...</span>
-                    )}
+                    {m.role === 'assistant' && m.streaming && <span className="message-meta streaming-indicator">CyberGuard AI is thinking...</span>}
                     {m.role === 'user' && <CopyButton text={m.content} />}
                   </div>
                 </div>
@@ -357,6 +306,7 @@ export function ChatPage() {
 
         <form className="chat-input-bar" onSubmit={handleSend}>
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(e as any); } }}
@@ -369,6 +319,6 @@ export function ChatPage() {
           </button>
         </form>
       </main>
-    </div>
+    </Layout>
   );
 }

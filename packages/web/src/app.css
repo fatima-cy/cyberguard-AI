@@ -638,3 +638,184 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
 .forgot-link:hover {
   text-decoration: underline;
 }
+/* ═══════════════════════════════════════════════════════════════════════════
+   Sprint 2.6 — Mobile responsiveness + Polish
+   Append to packages/web/src/app.css
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Loading skeleton ── */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-card) 25%, rgba(255,255,255,0.05) 50%, var(--bg-card) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius);
+}
+
+.skeleton-text { height: 1rem; margin-bottom: 0.5rem; }
+.skeleton-text.wide { width: 80%; }
+.skeleton-text.medium { width: 60%; }
+.skeleton-text.short { width: 40%; }
+.skeleton-stat { height: 5rem; width: 100%; }
+.skeleton-row { height: 3.5rem; width: 100%; margin-bottom: 0.5rem; }
+
+/* ── Improved AI response typography ── */
+.message-markdown {
+  line-height: 1.75;
+  letter-spacing: 0.01em;
+}
+
+.message-markdown h1 { font-size: 1.25rem; margin: 1.25rem 0 0.75rem; border-bottom: 1px solid var(--border); padding-bottom: 0.375rem; }
+.message-markdown h2 { font-size: 1.1rem; margin: 1.1rem 0 0.6rem; }
+.message-markdown h3 { font-size: 1rem; margin: 1rem 0 0.5rem; color: #93c5fd; }
+.message-markdown p { margin: 0 0 0.875rem; }
+.message-markdown p:last-child { margin-bottom: 0; }
+.message-markdown ul, .message-markdown ol { margin: 0.5rem 0 0.875rem; padding-left: 1.5rem; }
+.message-markdown li { margin-bottom: 0.5rem; line-height: 1.6; }
+
+/* ── Hamburger menu button (mobile only) ── */
+.sidebar-toggle {
+  display: none;
+  position: fixed;
+  top: 1rem;
+  left: 1rem;
+  z-index: 200;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem;
+  cursor: pointer;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.sidebar-toggle span {
+  display: block;
+  width: 20px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 2px;
+  transition: all 0.2s;
+}
+
+.sidebar-toggle.open span:nth-child(1) { transform: rotate(45deg) translate(5px, 5px); }
+.sidebar-toggle.open span:nth-child(2) { opacity: 0; }
+.sidebar-toggle.open span:nth-child(3) { transform: rotate(-45deg) translate(5px, -5px); }
+
+/* ── Sidebar overlay (mobile) ── */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 149;
+  backdrop-filter: blur(2px);
+}
+
+/* ── Mobile breakpoint ── */
+@media (max-width: 768px) {
+  /* Show hamburger */
+  .sidebar-toggle { display: flex; }
+
+  /* Sidebar slides in from left */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    z-index: 150;
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+    width: 280px;
+    min-width: 280px;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.4);
+  }
+
+  .sidebar-overlay.open { display: block; }
+
+  /* Main panel takes full width */
+  .main-panel,
+  .chat-panel {
+    width: 100%;
+    padding-top: 0;
+  }
+
+  /* Dashboard adjustments */
+  .panel-header {
+    padding: 3.5rem 1rem 1rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .panel-header .btn { width: 100%; justify-content: center; }
+
+  .stats-grid {
+    grid-template-columns: 1fr 1fr;
+    padding: 1rem;
+    gap: 0.75rem;
+  }
+
+  .info-grid {
+    grid-template-columns: 1fr;
+    padding: 0 1rem 1rem;
+  }
+
+  .activity-section { padding: 0 1rem 2rem; }
+
+  /* Chat adjustments */
+  .messages { padding: 1rem; gap: 1rem; }
+
+  .message { gap: 0.5rem; }
+  .message-user { flex-direction: row-reverse; }
+  .message-avatar { width: 28px; height: 28px; font-size: 1rem; }
+  .message-text,
+  .message-markdown { font-size: 0.9375rem; padding: 0.75rem; }
+
+  .chat-empty { padding: 1.5rem 1rem; }
+  .chat-empty-icon { font-size: 2.5rem; }
+  .chat-suggestions { flex-direction: column; }
+  .suggestion-chip { text-align: left; }
+
+  .chat-input-bar {
+    padding: 0.75rem 1rem;
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+
+  .chat-input-bar textarea { font-size: 16px; } /* Prevent iOS zoom on focus */
+
+  /* Auth pages */
+  .auth-page { padding: 1rem; align-items: flex-start; padding-top: 2rem; }
+  .auth-card { padding: 1.5rem; }
+
+  /* Session search */
+  .session-search-wrapper { margin: 0 0 0.5rem; }
+
+  /* Stat card score on mobile */
+  .stat-card-score { flex-direction: column; gap: 0.5rem; text-align: center; }
+}
+
+/* ── Small phones ── */
+@media (max-width: 380px) {
+  .stats-grid { grid-template-columns: 1fr; }
+  .auth-card { padding: 1.25rem; }
+}
+
+/* ── Safe area for notched phones ── */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .chat-input-bar {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
