@@ -10,6 +10,16 @@
 
 export type MessageRole = 'user' | 'assistant' | 'system';
 
+export interface ChatSource {
+  documentTitle: string;
+  section: string;
+  version: string;
+  status: string;
+  sourceUrl: string;
+  confidenceLabel: 'High' | 'Medium' | 'Low';
+  historicalNotice: string | null;
+}
+
 export interface ChatMessage {
   id: string;
   sessionId: string;
@@ -19,6 +29,7 @@ export interface ChatMessage {
   content: string;
   createdAt: string;        // ISO 8601
   tokens?: MessageTokens;
+  sources?: ChatSource[];   // Sprint 3.1 — RAG citations, assistant messages only
 }
 
 export interface MessageTokens {

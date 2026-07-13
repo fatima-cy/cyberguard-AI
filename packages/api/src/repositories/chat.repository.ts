@@ -159,5 +159,6 @@ function toSafeMessage(doc: any): ChatMessage {
     content: doc.content,
     createdAt: doc.createdAt,
     tokens: doc.tokens,
+    sources: doc.sources,   // Sprint 3.1 — was previously stripped on read
   };
 }

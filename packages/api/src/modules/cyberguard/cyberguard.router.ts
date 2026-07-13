@@ -8,6 +8,10 @@
  * Sprint 2.1: POST /chat/stream
  * Sprint 2.2: Org context
  * Sprint 2.3: PATCH /sessions/:id (rename), DELETE /sessions/:id (soft delete)
+ * Sprint 3.1: RAG grounding — organizationId threaded into sendChatMessage(Stream)
+ *             for the knowledge search service's multi-tenant filter; sources[]
+ *             returned in blocking responses, streamed as a 'sources' SSE event,
+ *             and persisted alongside the assistant message.
  */
 
 import { Router, type Request, type Response } from 'express';
@@ -16,7 +20,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { validate, validateQuery, paginationSchema } from '../../middleware/validate.middleware';
 import { requireAuth, requireOrganisation } from '../../middleware/auth.middleware';
-import { sendChatMessage, sendChatMessageStream, type OrgContext } from './cyberguard.service';
+import { sendChatMessage, sendChatMessageStream, type OrgContext, type ChatSource } from './cyberguard.service';
 import {
   createSession,
   getSessionById,
@@ -79,11 +83,36 @@ async function resolveSession(existingSessionId: string | undefined, userId: str
   return createSession({ id: uuidv4(), organizationId, userId, title, createdAt: now, updatedAt: now, messageCount: 0 });
 }
 
-async function persistMessages(sessionId: string, organizationId: string, userId: string, userMessage: string, assistantResponse: string, tokens: { prompt: number; completion: number; total: number }, currentMessageCount: number): Promise<string> {
+/**
+ * `sources` is persisted on the assistant message only, matching the existing
+ * `tokens` field's pattern (optional, assistant-only). Requires ChatMessage
+ * (packages/shared/src/types/chat.types.ts) to have `sources?: ChatSource[]` —
+ * see the accompanying shared-package and chat.repository.ts patches.
+ */
+async function persistMessages(
+  sessionId: string,
+  organizationId: string,
+  userId: string,
+  userMessage: string,
+  assistantResponse: string,
+  tokens: { prompt: number; completion: number; total: number },
+  currentMessageCount: number,
+  sources: ChatSource[] = [],
+): Promise<string> {
   const now = new Date().toISOString();
   const assistantMsgId = uuidv4();
   await saveMessage({ id: uuidv4(), sessionId, organizationId, userId, role: 'user', content: userMessage, createdAt: now });
-  await saveMessage({ id: assistantMsgId, sessionId, organizationId, userId, role: 'assistant', content: assistantResponse, createdAt: new Date().toISOString(), tokens: { prompt: tokens.prompt, completion: tokens.completion, total: tokens.total } });
+  await saveMessage({
+    id: assistantMsgId,
+    sessionId,
+    organizationId,
+    userId,
+    role: 'assistant',
+    content: assistantResponse,
+    createdAt: new Date().toISOString(),
+    tokens: { prompt: tokens.prompt, completion: tokens.completion, total: tokens.total },
+    sources,
+  });
   await updateSessionMetadata(sessionId, organizationId, { messageCount: currentMessageCount + 2, updatedAt: new Date().toISOString() });
   return assistantMsgId;
 }
@@ -116,17 +145,18 @@ cyberguardRouter.post('/chat/stream', requireAuth, requireOrganisation, aiRateLi
 
   let fullResponse = '';
   let streamMetadata: any = null;
-
+  let streamSources: ChatSource[] = [];
   try {
-    for await (const chunk of sendChatMessageStream(message, conversationHistory, orgContext)) {
+    for await (const chunk of sendChatMessageStream(message, conversationHistory, orgContext, organizationId!)) {
       if (req.socket.destroyed) break;
+      if (chunk.type === 'sources') { streamSources = chunk.sources ?? []; res.write(`data: ${JSON.stringify({ type: 'sources', sources: streamSources })}\n\n`); }
       if (chunk.type === 'token') { fullResponse += chunk.token; res.write(`data: ${JSON.stringify({ type: 'token', token: chunk.token })}\n\n`); }
       if (chunk.type === 'done') streamMetadata = chunk.metadata;
       if (chunk.type === 'error') { res.write(`data: ${JSON.stringify({ type: 'error', error: chunk.error })}\n\n`); res.end(); return; }
     }
 
     const tokens = { prompt: streamMetadata?.promptTokens ?? 0, completion: streamMetadata?.completionTokens ?? 0, total: streamMetadata?.totalTokens ?? 0 };
-    const assistantMsgId = await persistMessages(session!.id, organizationId!, userId, message, fullResponse, tokens, session!.messageCount);
+    const assistantMsgId = await persistMessages(session!.id, organizationId!, userId, message, fullResponse, tokens, session!.messageCount, streamSources);
 
     res.write(`data: ${JSON.stringify({ type: 'done', sessionId: session!.id, messageId: assistantMsgId, metadata: { model: streamMetadata?.model ?? config.openai.deploymentName, tokens, latencyMs: streamMetadata?.latencyMs ?? 0 } })}\n\n`);
   } catch { res.write(`data: ${JSON.stringify({ type: 'error', error: 'Stream interrupted' })}\n\n`); }
@@ -152,16 +182,15 @@ cyberguardRouter.post('/chat', requireAuth, requireOrganisation, aiRateLimiter, 
     let conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
     if (session) { const prev = await getMessagesBySession(session.id, organizationId!); conversationHistory = prev.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })); }
 
-    const { response, metadata } = await sendChatMessage(message, conversationHistory, orgContext);
+    const { response, metadata, sources } = await sendChatMessage(message, conversationHistory, orgContext, organizationId!);
 
     if (!session) {
       const title = message.length > 60 ? `${message.substring(0, 57)}...` : message;
       session = await createSession({ id: uuidv4(), organizationId: organizationId!, userId, title, createdAt: now, updatedAt: now, messageCount: 0 });
     }
-
     const tokens = { prompt: metadata.promptTokens, completion: metadata.completionTokens, total: metadata.totalTokens };
-    const assistantMsgId = await persistMessages(session.id, organizationId!, userId, message, response, tokens, session.messageCount);
-    res.status(200).json({ response, sessionId: session.id, messageId: assistantMsgId, metadata: { model: metadata.model, tokens, latencyMs: metadata.latencyMs } });
+    const assistantMsgId = await persistMessages(session.id, organizationId!, userId, message, response, tokens, session.messageCount, sources);
+    res.status(200).json({ response, sessionId: session.id, messageId: assistantMsgId, sources, metadata: { model: metadata.model, tokens, latencyMs: metadata.latencyMs } });
   } catch (err: any) {
     if (err.code === 'AI_UNAVAILABLE') { res.status(503).json({ type: '/errors/service-unavailable', title: 'AI Service Unavailable', status: 503, detail: 'AI temporarily unavailable.', instance: req.path }); return; }
     throw err;
