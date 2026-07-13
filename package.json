@@ -19,8 +19,14 @@
     "format:check": "prettier --check \"packages/**/*.{ts,tsx,js,json,css,md}\" \"infra/**/*.{bicep,sh}\" \"docs/**/*.md\""
   },
   "devDependencies": {
-    "turbo": "^2.0.4",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/uuid": "^10.0.0",
     "prettier": "^3.3.2",
+    "turbo": "^2.0.4",
     "typescript": "^5.4.5"
   }
 }

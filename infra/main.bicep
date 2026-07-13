@@ -31,7 +31,7 @@ var tags = {
 // Generate a globally unique suffix to avoid name collisions §15.2
 var suffix = uniqueString(subscription().id)
 
-var kvName = 'cs-${environment}-kv-${suffix}'
+var kvName = take('cs-${environment}-kv-${suffix}', 24)
 var cosmosName = 'cs-${environment}-cosmos-${suffix}'
 var redisName = 'cs-${environment}-redis-${suffix}'
 var serviceBusName = 'cs-${environment}-bus-${suffix}'
