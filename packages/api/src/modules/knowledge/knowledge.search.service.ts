@@ -35,6 +35,19 @@ export interface SearchOptions {
   organizationId: string | null;
   includeHistorical?: boolean;
   jurisdiction?: string;
+  /**
+   * Restricts retrieval to documents tagged with any of these categories
+   * BEFORE the authority-level precedence order is applied (step 5 of 7).
+   * Added after Sprint 3.2 phishing-analyzer testing surfaced a real gap:
+   * the authority-level tiebreak (regulatory > standards_body > ...) is
+   * correct for "what's current law" chat questions, but wrong for
+   * technical queries where GAID's higher authority tier was steamrolling
+   * more topically-relevant OWASP/CISA guidance regardless of actual
+   * semantic fit. Category scoping happens as a hard filter, upstream of
+   * the precedence order, so it doesn't change chat's existing grounding
+   * behavior — only callers that opt in are affected.
+   */
+  categories?: string[];
 }
 
 export class KnowledgeSearchService {
@@ -53,6 +66,12 @@ export class KnowledgeSearchService {
     ];
     if (options.jurisdiction) {
       filterClauses.push(`jurisdiction/any(j: j eq '${this.escapeODataString(options.jurisdiction)}')`);
+    }
+    if (options.categories && options.categories.length > 0) {
+      const categoryChecks = options.categories
+        .map((c) => `category/any(cat: cat eq '${this.escapeODataString(c)}')`)
+        .join(' or ');
+      filterClauses.push(`(${categoryChecks})`);
     }
 
     const results = await this.searchClient.search(query, {
