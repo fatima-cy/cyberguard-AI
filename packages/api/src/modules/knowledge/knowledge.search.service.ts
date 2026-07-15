@@ -1,6 +1,10 @@
 /**
  * packages/api/src/modules/knowledge/knowledge.search.service.ts
- * (corrected: import from '@cyberguard/shared')
+ * (Sprint 4.1.1 — fixed confidenceLabel to use Azure AI Search's semantic
+ * rerankerScore (0-4 scale) instead of the base hybrid score (a much smaller
+ * scale), which was causing every confidence label to show "Low" regardless
+ * of actual grounding quality throughout Sprint 3. See computeConfidenceLabel
+ * below for the full explanation and the diagnostic data that confirmed it.)
  */
 
 import { SearchClient } from '@azure/search-documents';
@@ -35,18 +39,6 @@ export interface SearchOptions {
   organizationId: string | null;
   includeHistorical?: boolean;
   jurisdiction?: string;
-  /**
-   * Restricts retrieval to documents tagged with any of these categories
-   * BEFORE the authority-level precedence order is applied (step 5 of 7).
-   * Added after Sprint 3.2 phishing-analyzer testing surfaced a real gap:
-   * the authority-level tiebreak (regulatory > standards_body > ...) is
-   * correct for "what's current law" chat questions, but wrong for
-   * technical queries where GAID's higher authority tier was steamrolling
-   * more topically-relevant OWASP/CISA guidance regardless of actual
-   * semantic fit. Category scoping happens as a hard filter, upstream of
-   * the precedence order, so it doesn't change chat's existing grounding
-   * behavior — only callers that opt in are affected.
-   */
   categories?: string[];
 }
 
@@ -96,9 +88,13 @@ export class KnowledgeSearchService {
       ],
     });
 
-    const candidates: (KnowledgeChunkIndexFields & { score: number })[] = [];
+    const candidates: (KnowledgeChunkIndexFields & { score: number; rerankerScore?: number })[] = [];
     for await (const r of results.results) {
-      candidates.push({ ...(r.document as KnowledgeChunkIndexFields), score: r.score ?? 0 });
+      candidates.push({
+        ...(r.document as KnowledgeChunkIndexFields),
+        score: r.score ?? 0,
+        rerankerScore: (r as any).rerankerScore,
+      });
     }
 
     candidates.sort((a, b) => {
@@ -112,7 +108,7 @@ export class KnowledgeSearchService {
     return candidates.slice(0, TOP_K).map((c) => this.toRetrievedChunk(c));
   }
 
-  private toRetrievedChunk(c: KnowledgeChunkIndexFields & { score: number }): RetrievedChunk {
+  private toRetrievedChunk(c: KnowledgeChunkIndexFields & { score: number; rerankerScore?: number }): RetrievedChunk {
     return {
       content: c.content,
       documentTitle: c.documentTitle,
@@ -121,9 +117,42 @@ export class KnowledgeSearchService {
       status: c.status,
       sourceUrl: c.sourceUrl,
       supersededBy: c.supersededBy,
-      relevanceScore: c.score,
-      confidenceLabel: c.score > 0.8 ? 'High' : c.score > 0.6 ? 'Medium' : 'Low',
+      relevanceScore: c.rerankerScore ?? c.score,
+      confidenceLabel: this.computeConfidenceLabel(c.rerankerScore, c.score),
     };
+  }
+
+  /**
+   * Fixed Sprint 4.1.1 — was thresholding the base hybrid `score` (r.score)
+   * against 0.8/0.6, but that field is on a very different scale than those
+   * cutoffs assume: real observed values across Sprint 3 testing ranged
+   * 0.06–0.13 even for genuinely well-grounded, accurate results, so every
+   * single confidence label shown throughout Sprint 3 was "Low" regardless
+   * of actual grounding quality — not because retrieval was weak, but
+   * because the wrong score was being read.
+   *
+   * `rerankerScore` (Azure AI Search's dedicated semantic-relevance score,
+   * populated when queryType: 'semantic' is used, as it is here) is the
+   * field that 0.8/0.6-style cutoffs were implicitly designed for — except
+   * its real range is 0-4, not 0-1. Confirmed via live diagnostic: the same
+   * queries that always showed baseScore 0.06-0.13 showed rerankerScore
+   * 2.35-2.83, which is Microsoft's documented "good to excellent" range.
+   *
+   * Thresholds below (High >= 2.5, Medium >= 1.5) follow Azure's own
+   * published guidance for interpreting semantic reranker scores, applied
+   * to this deployment's real observed score distribution.
+   */
+  private computeConfidenceLabel(rerankerScore: number | undefined, baseScore: number): 'High' | 'Medium' | 'Low' {
+    if (rerankerScore !== undefined) {
+      if (rerankerScore >= 2.5) return 'High';
+      if (rerankerScore >= 1.5) return 'Medium';
+      return 'Low';
+    }
+    // Fallback for the rare case semantic reranking doesn't attach a score
+    // (e.g. content too short to rerank) — base hybrid score's real range
+    // observed this session, conservatively bucketed.
+    if (baseScore >= 0.1) return 'Medium';
+    return 'Low';
   }
 
   private async embedQuery(query: string): Promise<number[]> {
