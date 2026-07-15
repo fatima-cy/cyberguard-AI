@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { User, Organisation, ChatSession, ChatMessage } from '@cyberguard/shared';
+import type { User, Organisation, ChatSession, ChatMessage, PhishingAnalysis, PhishingAnalysisInput } from '@cyberguard/shared';
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
@@ -55,5 +55,17 @@ export const chatApi = {
   deleteSession: (sessionId: string) =>
     api.delete<{ id: string; deleted: boolean }>(
       `/api/v1/cyberguard/sessions/${sessionId}`,
+    ),
+};
+
+// ─── Phishing Analyzer (Sprint 3.2) ──────────────────────────────────────────
+
+export const phishingApi = {
+  analyze: (input: PhishingAnalysisInput) =>
+    api.post<PhishingAnalysis>('/api/v1/phishing/analyze', input),
+
+  listAnalyses: (page = 1, limit = 20) =>
+    api.get<{ analyses: PhishingAnalysis[]; page: number; limit: number }>(
+      `/api/v1/phishing/analyses?page=${page}&limit=${limit}`,
     ),
 };
