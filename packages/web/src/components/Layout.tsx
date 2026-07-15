@@ -68,6 +68,9 @@ export function Layout({ children, sidebar, userEmail }: LayoutProps) {
           <li className={isActive('/chat') ? 'active' : ''}>
             <Link to="/chat" onClick={() => setSidebarOpen(false)}>AI Assistant</Link>
           </li>
+          <li className={isActive('/phishing') ? 'active' : ''}>
+            <Link to="/phishing" onClick={() => setSidebarOpen(false)}>Phishing Analyzer</Link>
+          </li>
         </ul>
 
         {/* Extra sidebar content (session list for chat page) */}
