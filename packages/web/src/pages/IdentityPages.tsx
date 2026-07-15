@@ -23,7 +23,7 @@ export function ForgotPasswordPage() {
     return (
       <div className="auth-page">
         <div className="auth-card">
-          <div className="auth-logo">🛡️ CyberGuard AI</div>
+          <div className="auth-logo"><img src="/cloudsecure-icon.png" alt="CloudSecure" className="auth-logo-mark" /> CyberGuard AI</div>
           <div className="auth-success-icon">✉️</div>
           <h1 className="auth-title">Check your email</h1>
           <p className="auth-subtitle">
@@ -40,7 +40,7 @@ export function ForgotPasswordPage() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="auth-logo">🛡️ CyberGuard AI</div>
+        <div className="auth-logo"><img src="/cloudsecure-icon.png" alt="CloudSecure" className="auth-logo-mark" /> CyberGuard AI</div>
         <h1 className="auth-title">Forgot password?</h1>
         <p className="auth-subtitle">Enter your email and we'll send you a reset link.</p>
 
@@ -105,7 +105,7 @@ export function ResetPasswordPage() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="auth-logo">🛡️ CyberGuard AI</div>
+        <div className="auth-logo"><img src="/cloudsecure-icon.png" alt="CloudSecure" className="auth-logo-mark" /> CyberGuard AI</div>
         <h1 className="auth-title">Set new password</h1>
         <p className="auth-subtitle">Choose a strong password for your account.</p>
 
@@ -164,7 +164,7 @@ export function VerifyEmailPage() {
   return (
     <div className="auth-page">
       <div className="auth-card" style={{ textAlign: 'center' }}>
-        <div className="auth-logo">🛡️ CyberGuard AI</div>
+        <div className="auth-logo"><img src="/cloudsecure-icon.png" alt="CloudSecure" className="auth-logo-mark" /> CyberGuard AI</div>
 
         {status === 'verifying' && (
           <>

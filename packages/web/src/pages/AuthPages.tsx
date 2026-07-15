@@ -33,7 +33,7 @@ export function LoginPage() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="auth-logo">🛡️ CyberGuard AI</div>
+        <div className="auth-logo"><img src="/cloudsecure-icon.png" alt="CloudSecure" className="auth-logo-mark" /> CyberGuard AI</div>
         <h1 className="auth-title">Sign in</h1>
         <p className="auth-subtitle">AI-native cybersecurity for African enterprises</p>
 
@@ -124,7 +124,7 @@ export function RegisterPage() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <div className="auth-logo">🛡️ CyberGuard AI</div>
+        <div className="auth-logo"><img src="/cloudsecure-icon.png" alt="CloudSecure" className="auth-logo-mark" /> CyberGuard AI</div>
 
         {step === 'account' ? (
           <>

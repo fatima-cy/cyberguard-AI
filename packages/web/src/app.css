@@ -1051,3 +1051,14 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
      2-column squeeze around 500-600px viewports. */
   .chart-grid { grid-template-columns: 1fr; }
 }
+/* ══════════════════════════════════════════════════════════════════════════
+   Real logo in sidebar header (Sprint 4.1.6 — replaces 🛡️ emoji placeholder)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.sidebar-logo { display: flex; align-items: center; gap: 0.6rem; }
+.sidebar-logo-mark { height: 28px; width: auto; flex-shrink: 0; }
+
+/* Auth pages logo (Sprint 4.1.6 — replaces 🛡️ emoji, 6 instances across
+   AuthPages.tsx and IdentityPages.tsx) */
+.auth-logo { display: flex; align-items: center; gap: 0.6rem; }
+.auth-logo-mark { height: 28px; width: auto; flex-shrink: 0; }

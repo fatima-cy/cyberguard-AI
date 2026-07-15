@@ -56,7 +56,10 @@ export function Layout({ children, sidebar, userEmail }: LayoutProps) {
       />
 
       <nav className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
-        <div className="sidebar-logo">🛡️ CyberGuard AI</div>
+        <div className="sidebar-logo">
+          <img src="/cloudsecure-icon.png" alt="CloudSecure" className="sidebar-logo-mark" />
+          CyberGuard AI
+        </div>
 
         <div className="sidebar-nav-group">
           <ul className="sidebar-nav">
