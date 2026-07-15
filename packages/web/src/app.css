@@ -913,3 +913,36 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
 .risk-tag-critical { color: var(--danger); }
 
 .sidebar-heading { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted); padding: 0 0.5rem; margin: 0.5rem 0; }
+/* ══════════════════════════════════════════════════════════════════════════
+   Security Policy Generator (Sprint 3.3)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.phishing-form select {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); padding: 0.65rem 0.85rem; font-family: var(--font); font-size: 0.92rem;
+}
+.phishing-form select:focus { outline: none; border-color: var(--primary); }
+
+.policy-viewer {
+  margin-top: 2rem; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 1.75rem;
+}
+.policy-viewer-header {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 1rem;
+  margin-bottom: 1.25rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border);
+}
+.policy-viewer-header h3 { margin: 0; font-size: 1.15rem; }
+
+.policy-markdown { line-height: 1.7; }
+.policy-markdown h1 { font-size: 1.4rem; margin: 0 0 1rem; }
+.policy-markdown h2 { font-size: 1.15rem; margin: 1.75rem 0 0.75rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
+.policy-markdown h2:first-child { border-top: none; padding-top: 0; }
+.policy-markdown h3 { font-size: 1rem; margin: 1.25rem 0 0.5rem; color: var(--text); }
+.policy-markdown p { margin: 0 0 0.85rem; }
+.policy-markdown ul, .policy-markdown ol { margin: 0 0 0.85rem; padding-left: 1.4rem; }
+.policy-markdown li { margin-bottom: 0.35rem; }
+.policy-markdown strong { color: var(--text); }
+.policy-markdown hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+.policy-markdown code { background: var(--bg); padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.85rem; }
+
+.policy-viewer-actions { margin-top: 1.5rem; display: flex; justify-content: flex-end; }
