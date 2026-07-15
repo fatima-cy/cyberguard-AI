@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { useAuth } from '../context/auth.context';
-import { dashboardApi, chatApi, type DashboardSummary } from '../api/dashboard.api';
+import { dashboardApi, type DashboardSummary, type ActivityItem } from '../api/dashboard.api';
 import { Layout } from '../components/Layout';
-import type { ChatSession } from '@cyberguard/shared';
 
 // ─── Security Score ───────────────────────────────────────────────────────────
 
@@ -48,21 +48,86 @@ function ScoreRing({ score }: { score: number }) {
   );
 }
 
+// ─── Charts ───────────────────────────────────────────────────────────────────
+
+const RISK_COLORS = { LOW: '#22c55e', MEDIUM: '#eab308', HIGH: '#f97316', CRITICAL: '#ef4444' };
+
+function RiskDistributionChart({ riskBreakdown }: { riskBreakdown: DashboardSummary['stats']['riskBreakdown'] }) {
+  const data = (Object.keys(RISK_COLORS) as (keyof typeof RISK_COLORS)[])
+    .map(level => ({ name: level, value: riskBreakdown[level] }))
+    .filter(d => d.value > 0);
+
+  if (data.length === 0) {
+    return <p className="chart-empty">No phishing analyses yet — results will appear here.</p>;
+  }
+
+  return (
+    <div className="chart-with-legend">
+      <ResponsiveContainer width={140} height={140}>
+        <PieChart>
+          <Pie data={data} dataKey="value" nameKey="name" innerRadius={38} outerRadius={62} paddingAngle={3}>
+            {data.map((d) => <Cell key={d.name} fill={RISK_COLORS[d.name as keyof typeof RISK_COLORS]} />)}
+          </Pie>
+          <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} />
+        </PieChart>
+      </ResponsiveContainer>
+      <ul className="chart-legend">
+        {data.map(d => (
+          <li key={d.name}>
+            <span className="chart-legend-dot" style={{ background: RISK_COLORS[d.name as keyof typeof RISK_COLORS] }} />
+            {d.name} <strong>{d.value}</strong>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function ModuleActivityChart({ summary }: { summary: DashboardSummary }) {
+  const data = [
+    { name: 'Chats', value: summary.stats.conversations, fill: 'var(--primary)' },
+    { name: 'Analyses', value: summary.stats.phishingAnalyses, fill: '#f97316' },
+    { name: 'Policies', value: summary.stats.policiesGenerated, fill: '#22c55e' },
+  ];
+  return (
+    <ResponsiveContainer width="100%" height={140}>
+      <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
+        <XAxis type="number" hide />
+        <YAxis type="category" dataKey="name" width={70} tick={{ fill: 'var(--text-muted)', fontSize: 12 }} axisLine={false} tickLine={false} />
+        <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }} cursor={{ fill: 'var(--bg)' }} />
+        <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={18} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// ─── Activity feed ────────────────────────────────────────────────────────────
+
+const ACTIVITY_ICON: Record<ActivityItem['type'], string> = { chat: '💬', phishing: '🎣', policy: '📄' };
+
+function formatRelativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days === 1) return 'yesterday';
+  return `${days}d ago`;
+}
+
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
 function DashboardSkeleton() {
   return (
     <>
       <div className="stats-grid" style={{ padding: '1.5rem 2rem 0' }}>
-        {[1,2,3,4].map(i => <div key={i} className="stat-card"><div className="skeleton skeleton-stat" /></div>)}
+        {[1, 2, 3, 4, 5].map(i => <div key={i} className="stat-card"><div className="skeleton skeleton-stat" /></div>)}
       </div>
       <div className="info-grid" style={{ padding: '1.25rem 2rem' }}>
-        <div className="info-card">
-          {[1,2,3,4].map(i => <div key={i} className="skeleton skeleton-row" />)}
-        </div>
-        <div className="info-card">
-          {[1,2,3].map(i => <div key={i} className="skeleton skeleton-row" />)}
-        </div>
+        <div className="info-card">{[1, 2, 3, 4].map(i => <div key={i} className="skeleton skeleton-row" />)}</div>
+        <div className="info-card">{[1, 2, 3].map(i => <div key={i} className="skeleton skeleton-row" />)}</div>
       </div>
     </>
   );
@@ -74,13 +139,12 @@ export function DashboardPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [recentSessions, setRecentSessions] = useState<ChatSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    Promise.all([dashboardApi.getSummary(), chatApi.listSessions(1, 5)])
-      .then(([s, d]) => { setSummary(s); setRecentSessions(d.sessions); })
+    dashboardApi.getSummary()
+      .then(setSummary)
       .catch(() => setError('Failed to load dashboard.'))
       .finally(() => setLoading(false));
   }, []);
@@ -88,18 +152,6 @@ export function DashboardPage() {
   function formatDate(iso: string | null): string {
     if (!iso) return 'Never';
     return new Date(iso).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
-  }
-
-  function formatRelativeTime(iso: string): string {
-    const diff = Date.now() - new Date(iso).getTime();
-    const mins = Math.floor(diff / 60000);
-    const hours = Math.floor(diff / 3600000);
-    const days = Math.floor(diff / 86400000);
-    if (mins < 1) return 'just now';
-    if (mins < 60) return `${mins}m ago`;
-    if (hours < 24) return `${hours}h ago`;
-    if (days === 1) return 'yesterday';
-    return `${days}d ago`;
   }
 
   const securityScore = summary ? calculateSecurityScore(summary) : 0;
@@ -110,7 +162,7 @@ export function DashboardPage() {
       <main className="main-panel">
         <header className="panel-header">
           <div>
-            <h1>Dashboard</h1>
+            <h1>Security Operations Dashboard</h1>
             {firstName && <p className="panel-subtitle">Welcome back, {firstName}</p>}
           </div>
           <Link to="/chat" className="btn btn-primary">New conversation →</Link>
@@ -122,10 +174,6 @@ export function DashboardPage() {
         {summary && (
           <>
             <div className="stats-grid">
-              <div className="stat-card">
-                <div className="stat-value">{summary.stats.conversations}</div>
-                <div className="stat-label">Conversations</div>
-              </div>
               <div className="stat-card stat-card-score">
                 <ScoreRing score={securityScore} />
                 <div className="stat-score-info">
@@ -134,8 +182,16 @@ export function DashboardPage() {
                 </div>
               </div>
               <div className="stat-card">
-                <div className="stat-value">{summary.organization.memberCount}</div>
-                <div className="stat-label">Team members</div>
+                <div className="stat-value">{summary.stats.conversations}</div>
+                <div className="stat-label">Conversations</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-value">{summary.stats.phishingAnalyses}</div>
+                <div className="stat-label">Phishing Analyses</div>
+              </div>
+              <div className="stat-card">
+                <div className="stat-value">{summary.stats.policiesGenerated}</div>
+                <div className="stat-label">Policies Generated</div>
               </div>
               <div className="stat-card">
                 <div className="stat-value">{formatDate(summary.stats.lastActive)}</div>
@@ -143,19 +199,21 @@ export function DashboardPage() {
               </div>
             </div>
 
-            <div className="info-grid">
-              <div className="info-card">
-                <h2>Organisation</h2>
-                <div className="info-row"><span>Name</span><strong>{summary.organization.name}</strong></div>
-                <div className="info-row"><span>Country</span><strong>{summary.organization.settings.country}</strong></div>
-                <div className="info-row"><span>Industry</span><strong>{summary.organization.settings.industry}</strong></div>
-                <div className="info-row"><span>Plan</span><strong className="plan-badge">{summary.organization.plan.toUpperCase()}</strong></div>
-                <div className="info-row"><span>Role</span><strong>{summary.user.role.replace('_', ' ')}</strong></div>
+            <div className="chart-grid">
+              <div className="info-card chart-card">
+                <h2>Risk Distribution</h2>
+                <p className="chart-card-subtitle">Across all phishing analyses</p>
+                <RiskDistributionChart riskBreakdown={summary.stats.riskBreakdown} />
+              </div>
+              <div className="info-card chart-card">
+                <h2>Module Activity</h2>
+                <p className="chart-card-subtitle">Usage across CyberGuard AI</p>
+                <ModuleActivityChart summary={summary} />
               </div>
               <div className="info-card cta-card">
                 <div className="cta-icon">💬</div>
                 <h2>CyberGuard AI Assistant</h2>
-                <p>Ask about NDPR compliance, threat analysis, security policies, and more — grounded in Nigerian and African cybersecurity frameworks.</p>
+                <p>Ask about NDPA/GAID compliance, threat analysis, and security policies — grounded in current Nigerian and international frameworks.</p>
                 <Link to="/chat" className="btn btn-primary">Start conversation →</Link>
               </div>
             </div>
@@ -163,20 +221,19 @@ export function DashboardPage() {
             <div className="activity-section">
               <div className="activity-header">
                 <h2>Recent Activity</h2>
-                <Link to="/chat" className="activity-view-all">View all →</Link>
               </div>
-              {recentSessions.length === 0 ? (
+              {summary.recentActivity.length === 0 ? (
                 <div className="activity-empty">
-                  <p>No conversations yet. <Link to="/chat">Start your first one →</Link></p>
+                  <p>No activity yet. <Link to="/chat">Start your first conversation →</Link></p>
                 </div>
               ) : (
                 <div className="activity-list">
-                  {recentSessions.map(session => (
-                    <button key={session.id} className="activity-item" onClick={() => navigate(`/chat/${session.id}`)}>
-                      <div className="activity-icon">💬</div>
+                  {summary.recentActivity.map(item => (
+                    <button key={`${item.type}-${item.id}`} className="activity-item" onClick={() => navigate(item.href)}>
+                      <div className="activity-icon">{ACTIVITY_ICON[item.type]}</div>
                       <div className="activity-content">
-                        <div className="activity-title">{session.title}</div>
-                        <div className="activity-meta">{session.messageCount} messages · {formatRelativeTime(session.updatedAt)}</div>
+                        <div className="activity-title">{item.title}</div>
+                        <div className="activity-meta">{item.meta} · {formatRelativeTime(item.timestamp)}</div>
                       </div>
                       <div className="activity-arrow">→</div>
                     </button>

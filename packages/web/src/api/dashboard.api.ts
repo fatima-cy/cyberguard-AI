@@ -3,13 +3,26 @@ import type { User, Organisation, ChatSession, ChatMessage, PhishingAnalysis, Ph
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
+export interface ActivityItem {
+  type: 'chat' | 'phishing' | 'policy';
+  id: string;
+  title: string;
+  meta: string;
+  timestamp: string;
+  href: string;
+}
+
 export interface DashboardSummary {
   user: User;
   organization: Organisation;
   stats: {
     conversations: number;
+    phishingAnalyses: number;
+    policiesGenerated: number;
+    riskBreakdown: { LOW: number; MEDIUM: number; HIGH: number; CRITICAL: number };
     lastActive: string | null;
   };
+  recentActivity: ActivityItem[];
 }
 
 export const dashboardApi = {
