@@ -169,8 +169,12 @@ export function PhishingPage() {
   return (
     <Layout sidebar={sidebarContent} userEmail={user?.email}>
       <main className="phishing-panel">
-        <h2>AI Phishing Analyzer</h2>
-        <p className="text-muted">Paste an email, URL, or metadata below for a grounded risk analysis.</p>
+        <header className="panel-header">
+          <div>
+            <h1>AI Phishing Analyzer</h1>
+            <p className="panel-subtitle">Paste an email, URL, or metadata below for a grounded risk analysis</p>
+          </div>
+        </header>
 
         <div className="phishing-tabs">
           {(['email', 'url', 'metadata'] as InputTab[]).map(t => (

@@ -85,8 +85,12 @@ export function PoliciesPage() {
   return (
     <Layout sidebar={sidebarContent} userEmail={user?.email}>
       <main className="phishing-panel">
-        <h2>Security Policy Generator</h2>
-        <p className="text-muted">Generate a ready-to-adopt security policy grounded in current Nigerian and international standards.</p>
+        <header className="panel-header">
+          <div>
+            <h1>Security Policy Generator</h1>
+            <p className="panel-subtitle">Generate a ready-to-adopt security policy grounded in current Nigerian and international standards</p>
+          </div>
+        </header>
 
         <form className="phishing-form" onSubmit={handleGenerate}>
           <label>Policy Type</label>

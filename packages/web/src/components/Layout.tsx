@@ -5,6 +5,8 @@
  * Handles the mobile hamburger menu, overlay, and sidebar open/close state.
  *
  * Sprint 2.6: Mobile responsiveness
+ * Sprint 4.1.3: Grouped nav sections + icons for faster visual scanning as
+ * the module count grows (Dashboard alone → Dashboard + 3 AI tools)
  */
 
 import { useState, useEffect, type ReactNode } from 'react';
@@ -22,12 +24,10 @@ export function Layout({ children, sidebar, userEmail }: LayoutProps) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Close sidebar on route change (mobile)
   useEffect(() => {
     setSidebarOpen(false);
   }, [location.pathname]);
 
-  // Close on Escape key
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setSidebarOpen(false);
@@ -40,7 +40,6 @@ export function Layout({ children, sidebar, userEmail }: LayoutProps) {
 
   return (
     <div className="app-shell">
-      {/* Hamburger button — mobile only */}
       <button
         className={`sidebar-toggle ${sidebarOpen ? 'open' : ''}`}
         onClick={() => setSidebarOpen(o => !o)}
@@ -51,30 +50,44 @@ export function Layout({ children, sidebar, userEmail }: LayoutProps) {
         <span />
       </button>
 
-      {/* Overlay — mobile only */}
       <div
         className={`sidebar-overlay ${sidebarOpen ? 'open' : ''}`}
         onClick={() => setSidebarOpen(false)}
       />
 
-      {/* Sidebar */}
       <nav className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-logo">🛡️ CyberGuard AI</div>
 
-        <ul className="sidebar-nav">
-          <li className={isActive('/dashboard') ? 'active' : ''}>
-            <Link to="/dashboard" onClick={() => setSidebarOpen(false)}>Dashboard</Link>
-          </li>
-          <li className={isActive('/chat') ? 'active' : ''}>
-            <Link to="/chat" onClick={() => setSidebarOpen(false)}>AI Assistant</Link>
-          </li>
-          <li className={isActive('/phishing') ? 'active' : ''}>
-            <Link to="/phishing" onClick={() => setSidebarOpen(false)}>Phishing Analyzer</Link>
-          </li>
-          <li className={isActive('/policies') ? 'active' : ''}>
-            <Link to="/policies" onClick={() => setSidebarOpen(false)}>Policy Generator</Link>
-          </li>
-        </ul>
+        <div className="sidebar-nav-group">
+          <ul className="sidebar-nav">
+            <li className={isActive('/dashboard') ? 'active' : ''}>
+              <Link to="/dashboard" onClick={() => setSidebarOpen(false)}>
+                <span className="sidebar-nav-icon">📊</span> Dashboard
+              </Link>
+            </li>
+          </ul>
+        </div>
+
+        <div className="sidebar-nav-group">
+          <span className="sidebar-nav-section-label">AI Tools</span>
+          <ul className="sidebar-nav">
+            <li className={isActive('/chat') ? 'active' : ''}>
+              <Link to="/chat" onClick={() => setSidebarOpen(false)}>
+                <span className="sidebar-nav-icon">💬</span> AI Assistant
+              </Link>
+            </li>
+            <li className={isActive('/phishing') ? 'active' : ''}>
+              <Link to="/phishing" onClick={() => setSidebarOpen(false)}>
+                <span className="sidebar-nav-icon">🎣</span> Phishing Analyzer
+              </Link>
+            </li>
+            <li className={isActive('/policies') ? 'active' : ''}>
+              <Link to="/policies" onClick={() => setSidebarOpen(false)}>
+                <span className="sidebar-nav-icon">📄</span> Policy Generator
+              </Link>
+            </li>
+          </ul>
+        </div>
 
         {/* Extra sidebar content (session list for chat page) */}
         {sidebar}
@@ -85,7 +98,6 @@ export function Layout({ children, sidebar, userEmail }: LayoutProps) {
         </div>
       </nav>
 
-      {/* Main content */}
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         {children}
       </div>

@@ -274,6 +274,12 @@ export function ChatPage() {
   return (
     <Layout sidebar={sidebarContent} userEmail={user?.email}>
       <main className="chat-panel">
+        <header className="panel-header">
+          <div>
+            <h1>AI Assistant</h1>
+            <p className="panel-subtitle">Grounded in current NDPA/GAID, ISO 27001, and OWASP guidance</p>
+          </div>
+        </header>
         {messages.length === 0 ? (
           <div className="chat-empty">
             <div className="chat-empty-icon">🛡️</div>
