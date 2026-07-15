@@ -3,6 +3,7 @@ import { useAuth } from '../context/auth.context';
 import { policiesApi } from '../api/dashboard.api';
 import { Layout } from '../components/Layout';
 import { PolicyViewer } from '../components/PolicyViewer';
+import { LoadingIndicator } from '../components/LoadingIndicator';
 import type { GeneratedPolicy, PolicyType, PolicySector } from '@cyberguard/shared';
 import * as CyberguardShared from '@cyberguard/shared';
 
@@ -11,6 +12,14 @@ const POLICY_SECTOR_LABELS = CyberguardShared.POLICY_SECTOR_LABELS;
 
 const POLICY_TYPES = Object.keys(POLICY_TYPE_LABELS) as PolicyType[];
 const POLICY_SECTORS = Object.keys(POLICY_SECTOR_LABELS) as PolicySector[];
+
+const GENERATION_LOADING_MESSAGES = [
+  'Retrieving grounding sources…',
+  'Drafting policy statements…',
+  'Applying sector-specific guidance…',
+  'Citing applicable regulations…',
+  'Finalizing document — this can take up to 90 seconds…',
+];
 
 export function PoliciesPage() {
   const { user } = useAuth();
@@ -112,9 +121,19 @@ export function PoliciesPage() {
           {error && <div className="chat-error">{error}</div>}
 
           <button type="submit" className="btn btn-primary" disabled={generating}>
-            {generating ? 'Generating… (can take up to 90s)' : 'Generate Policy'}
+            {generating ? 'Generating…' : 'Generate Policy'}
           </button>
         </form>
+
+        {generating && <LoadingIndicator messages={GENERATION_LOADING_MESSAGES} />}
+
+        {!generating && !result && (
+          <div className="tool-empty">
+            <div className="tool-empty-icon">📄</div>
+            <h3>No policy generated yet</h3>
+            <p>Choose a policy type and sector above, and CyberGuard AI will draft a complete, ready-to-adopt document grounded in current Nigerian and international standards.</p>
+          </div>
+        )}
 
         {result && <PolicyViewer policy={result} />}
       </main>

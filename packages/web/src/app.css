@@ -977,3 +977,31 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
 /* Chat/Phishing/Policies pages now reuse the existing .panel-header and
    .panel-subtitle classes directly (same ones Dashboard already used) for
    true visual consistency, rather than near-duplicate new classes. */
+/* ══════════════════════════════════════════════════════════════════════════
+   Loading indicator (Sprint 4.1.4)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.loading-indicator {
+  display: flex; align-items: center; gap: 0.75rem; margin-top: 1.25rem;
+  padding: 1rem 1.25rem; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.loading-indicator-spinner {
+  width: 20px; height: 20px; border: 2px solid var(--border); border-top-color: var(--primary);
+  border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0;
+}
+.loading-indicator-text { font-size: 0.88rem; color: var(--text-muted); }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Standardized pre-submission empty states — Phishing/Policies (Sprint 4.1.4)
+   Matches .chat-empty's existing pattern (icon + heading + description) so
+   all three AI tools feel consistent before the user's first submission.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.tool-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 3rem 1.5rem; text-align: center; gap: 0.75rem; color: var(--text-muted);
+}
+.tool-empty-icon { font-size: 2.5rem; }
+.tool-empty h3 { color: var(--text); font-size: 1.05rem; font-weight: 600; margin: 0; }
+.tool-empty p { max-width: 420px; line-height: 1.6; margin: 0; font-size: 0.88rem; }

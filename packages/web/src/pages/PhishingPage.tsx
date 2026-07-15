@@ -4,7 +4,16 @@ import { phishingApi } from '../api/dashboard.api';
 import { Layout } from '../components/Layout';
 import { RiskScoreGauge } from '../components/RiskScoreGauge';
 import { CitationBlock } from '../components/CitationBlock';
+import { LoadingIndicator } from '../components/LoadingIndicator';
 import type { PhishingAnalysis, PhishingAnalysisInput } from '@cyberguard/shared';
+
+const ANALYSIS_LOADING_MESSAGES = [
+  'Analyzing indicators…',
+  'Checking domain reputation…',
+  'Grounding in OWASP and CISA guidance…',
+  'Assessing risk severity…',
+  'Compiling recommended actions…',
+];
 
 type InputTab = 'email' | 'url' | 'metadata';
 
@@ -214,6 +223,16 @@ export function PhishingPage() {
             {analyzing ? 'Analyzing…' : 'Analyze'}
           </button>
         </form>
+
+        {analyzing && <LoadingIndicator messages={ANALYSIS_LOADING_MESSAGES} />}
+
+        {!analyzing && !result && (
+          <div className="tool-empty">
+            <div className="tool-empty-icon">🎣</div>
+            <h3>No analysis yet</h3>
+            <p>Paste a suspicious email, URL, or metadata above and CyberGuard AI will assess it for phishing risk, grounded in current OWASP and CISA guidance.</p>
+          </div>
+        )}
 
         {result && <ResultCard analysis={result} />}
       </main>
