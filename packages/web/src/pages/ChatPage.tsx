@@ -6,6 +6,7 @@ import { useAuth } from '../context/auth.context';
 import { chatApi } from '../api/dashboard.api';
 import { getAccessToken } from '../api/client';
 import { Layout } from '../components/Layout';
+import { CitationBlock } from '../components/CitationBlock';
 import type { ChatSession, ChatSource } from '@cyberguard/shared';
 
 interface Message {
@@ -26,34 +27,6 @@ function CopyButton({ text }: { text: string }) {
     <button className={`copy-btn ${copied ? 'copied' : ''}`} onClick={handleCopy} title="Copy">
       {copied ? '✓ Copied' : 'Copy'}
     </button>
-  );
-}
-
-/** Sprint 3.1 — renders RAG citations below a grounded assistant response.
- *  Historical sources get a visible "superseded" tag per the governance rules;
- *  never presented as current law/standard. */
-function CitationBlock({ sources }: { sources: ChatSource[] }) {
-  const [expanded, setExpanded] = useState(false);
-  if (!sources || sources.length === 0) return null;
-
-  return (
-    <div className="citation-block">
-      <button className="citation-toggle" onClick={() => setExpanded(v => !v)}>
-        {expanded ? '▾' : '▸'} Based on {sources.length} source{sources.length > 1 ? 's' : ''}
-      </button>
-      {expanded && (
-        <ul className="citation-list">
-          {sources.map((s, i) => (
-            <li key={i} className={`citation-item ${s.status === 'historical' ? 'citation-historical' : ''}`}>
-              <span className="citation-title">{s.documentTitle}{s.section ? ` §${s.section}` : ''} (v{s.version})</span>
-              {s.historicalNotice && <span className="citation-historical-tag"> — {s.historicalNotice}</span>}
-              <span className={`citation-confidence citation-confidence-${s.confidenceLabel.toLowerCase()}`}>{s.confidenceLabel}</span>
-              {s.sourceUrl && <a href={s.sourceUrl} target="_blank" rel="noopener noreferrer" className="citation-link">source</a>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   );
 }
 
@@ -128,17 +101,6 @@ export function ChatPage() {
   const abortRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // FIX: tracks a sessionId that was just assigned by an in-flight stream, so the
-  // messages-loading effect below can skip re-fetching from the server while that
-  // stream is still running. Without this, starting a NEW conversation triggers:
-  //   1. backend sends `session` event mid-stream → setActiveSessionId(newId)
-  //   2. activeSessionId changes → the fetch-messages effect fires immediately
-  //   3. GET /sessions/:id returns only the user message (assistant message isn't
-  //      persisted until the stream finishes) → overwrites in-progress streaming
-  //      state with incomplete data → the reply visibly disappears until a full
-  //      page refresh re-fetches the now-complete conversation.
-  // This bug predates Sprint 3.1 — it just wasn't exercised until testing the
-  // "start a brand new conversation" path end-to-end.
   const streamingSessionIdRef = useRef<string | null>(null);
 
   const sessions = search.trim()
@@ -160,9 +122,6 @@ export function ChatPage() {
 
   useEffect(() => {
     if (!activeSessionId) { setMessages([]); return; }
-    // FIX: skip the fetch entirely if this session id was just assigned by our
-    // own in-flight stream — local state is already authoritative until the
-    // stream's 'done' event lands and persistence completes.
     if (streamingSessionIdRef.current === activeSessionId) return;
     chatApi.getSession(activeSessionId).then(data => {
       setMessages(data.messages.map(m => ({
@@ -176,7 +135,6 @@ export function ChatPage() {
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
   useEffect(() => { return () => { abortRef.current?.abort(); }; }, []);
 
-  // Auto-resize textarea
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -243,8 +201,6 @@ export function ChatPage() {
           try {
             const event = JSON.parse(data);
             if (event.type === 'session' && !activeSessionId) {
-              // FIX: mark this session id as "currently streaming" BEFORE
-              // triggering the state change that fires the fetch-messages effect.
               streamingSessionIdRef.current = event.sessionId;
               setActiveSessionId(event.sessionId);
               navigate(`/chat/${event.sessionId}`, { replace: true });
@@ -259,8 +215,6 @@ export function ChatPage() {
               setMessages(prev => prev.map(m => m.id === assistantMsgId
                 ? { ...m, id: event.messageId ?? m.id, streaming: false, tokens: event.metadata?.tokens ? { total: event.metadata.tokens.total } : undefined }
                 : m));
-              // FIX: stream is complete and persisted — safe to let future
-              // session-id changes fetch from the server again.
               streamingSessionIdRef.current = null;
               refreshSessions();
             }
@@ -324,9 +278,9 @@ export function ChatPage() {
           <div className="chat-empty">
             <div className="chat-empty-icon">🛡️</div>
             <h2>CyberGuard AI Assistant</h2>
-            <p>Ask me about NDPR compliance, cybersecurity threats, ISO 27001, data protection, and security best practices for African enterprises.</p>
+            <p>Ask me about NDPA/GAID compliance, cybersecurity threats, ISO 27001, data protection, and security best practices for African enterprises.</p>
             <div className="chat-suggestions">
-              {['What are the NDPR requirements for a fintech startup?', 'How do I protect against BEC attacks?', 'Create an ISO 27001 gap analysis checklist'].map(s => (
+              {['What are the NDPA requirements for a fintech startup?', 'How do I protect against BEC attacks?', 'Create an ISO 27001 gap analysis checklist'].map(s => (
                 <button key={s} className="suggestion-chip" onClick={() => setInput(s)}>{s}</button>
               ))}
             </div>

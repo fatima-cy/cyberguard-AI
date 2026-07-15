@@ -3,6 +3,7 @@ import { useAuth } from '../context/auth.context';
 import { phishingApi } from '../api/dashboard.api';
 import { Layout } from '../components/Layout';
 import { RiskScoreGauge } from '../components/RiskScoreGauge';
+import { CitationBlock } from '../components/CitationBlock';
 import type { PhishingAnalysis, PhishingAnalysisInput } from '@cyberguard/shared';
 
 type InputTab = 'email' | 'url' | 'metadata';
@@ -53,30 +54,6 @@ function IndicatorList({ indicators }: { indicators: PhishingAnalysis['indicator
   );
 }
 
-function ResultCitations({ sources }: { sources: PhishingAnalysis['sources'] }) {
-  const [expanded, setExpanded] = useState(false);
-  if (!sources || sources.length === 0) return null;
-  return (
-    <div className="citation-block">
-      <button className="citation-toggle" onClick={() => setExpanded(v => !v)}>
-        {expanded ? '▾' : '▸'} Based on {sources.length} source{sources.length > 1 ? 's' : ''}
-      </button>
-      {expanded && (
-        <ul className="citation-list">
-          {sources.map((s, i) => (
-            <li key={i} className={`citation-item ${s.status === 'historical' ? 'citation-historical' : ''}`}>
-              <span className="citation-title">{s.documentTitle}{s.section ? ` §${s.section}` : ''} (v{s.version})</span>
-              {s.historicalNotice && <span className="citation-historical-tag"> — {s.historicalNotice}</span>}
-              <span className={`citation-confidence citation-confidence-${s.confidenceLabel.toLowerCase()}`}>{s.confidenceLabel}</span>
-              {s.sourceUrl && <a href={s.sourceUrl} target="_blank" rel="noopener noreferrer" className="citation-link">source</a>}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 function ResultCard({ analysis }: { analysis: PhishingAnalysis }) {
   return (
     <div className="phishing-result">
@@ -110,7 +87,7 @@ function ResultCard({ analysis }: { analysis: PhishingAnalysis }) {
         </ul>
       </section>
 
-      <ResultCitations sources={analysis.sources} />
+      <CitationBlock sources={analysis.sources} />
 
       <div className="phishing-result-actions">
         <CopyButton text={analysisToPlainText(analysis)} />
