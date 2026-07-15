@@ -89,8 +89,16 @@ export function Layout({ children, sidebar, userEmail }: LayoutProps) {
           </ul>
         </div>
 
-        {/* Extra sidebar content (session list for chat page) */}
-        {sidebar}
+        {/* Extra sidebar content (session list for chat page, recent analyses/
+            saved policies for other pages). Sprint 4.1.5 fix: closes the mobile
+            sidebar on click — the existing location.pathname-based auto-close
+            only fires on actual route navigation, but selecting a past analysis
+            or saved policy is a same-page state update, not a route change, so
+            it never triggered the close. Rename/delete buttons already call
+            stopPropagation(), so they're unaffected by this. */}
+        <div className="sidebar-extra" onClick={() => setSidebarOpen(false)}>
+          {sidebar}
+        </div>
 
         <div className="sidebar-footer">
           {userEmail && <span className="sidebar-user">{userEmail}</span>}

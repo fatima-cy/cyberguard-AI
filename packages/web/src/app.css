@@ -1005,3 +1005,49 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
 .tool-empty-icon { font-size: 2.5rem; }
 .tool-empty h3 { color: var(--text); font-size: 1.05rem; font-weight: 600; margin: 0; }
 .tool-empty p { max-width: 420px; line-height: 1.6; margin: 0; font-size: 0.88rem; }
+/* ══════════════════════════════════════════════════════════════════════════
+   Mobile fixes for Phishing/Policies pages (Sprint 4.1.5)
+   A second @media block at the same breakpoint as the existing Sprint 2.6
+   one — completely valid CSS, browsers apply both; simpler and lower-risk
+   than editing into the middle of the existing block.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+@media (max-width: 768px) {
+  /* .phishing-panel was missing from the existing width-fix rule entirely —
+     confirmed via mobile audit, it never got the same full-width treatment
+     .main-panel/.chat-panel already had. */
+  .phishing-panel { width: 100%; padding: 1rem; }
+
+  /* Phishing result header: gauge + verdict text side-by-side cramps badly
+     under ~400px — stack vertically on mobile. */
+  .phishing-result-header { flex-direction: column; align-items: flex-start; gap: 1rem; }
+  .phishing-result { padding: 1.25rem; }
+
+  /* Policy viewer header: title + date side-by-side wraps awkwardly — stack. */
+  .policy-viewer-header { flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+  .policy-viewer { padding: 1.25rem; }
+
+  /* Citation confidence badge used margin-left:auto assuming a single-line
+     flex row — once citation-item wraps (long document titles are common),
+     the badge doesn't reliably right-align anymore. Column layout on mobile
+     avoids the ambiguity entirely. */
+  .citation-item { flex-direction: column; align-items: flex-start; }
+  .citation-confidence { margin-left: 0; }
+
+  /* Tabs: three tabs can crowd narrow screens — allow horizontal scroll
+     instead of wrapping/crushing labels. */
+  .phishing-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .phishing-tab { flex-shrink: 0; }
+
+  /* Form inputs: match chat-input-bar's existing iOS zoom-prevention pattern
+     (16px minimum font size stops Safari auto-zooming on focus) — Phishing/
+     Policies forms didn't have this despite using the same underlying issue. */
+  .phishing-form input,
+  .phishing-form textarea,
+  .phishing-form select { font-size: 16px; }
+
+  /* Chart cards: force single column below 768px rather than relying solely
+     on auto-fit's minmax(260px,...), which can still produce an awkward
+     2-column squeeze around 500-600px viewports. */
+  .chart-grid { grid-template-columns: 1fr; }
+}
