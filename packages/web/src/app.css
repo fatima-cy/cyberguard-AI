@@ -1062,3 +1062,25 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
    AuthPages.tsx and IdentityPages.tsx) */
 .auth-logo { display: flex; align-items: center; gap: 0.6rem; }
 .auth-logo-mark { height: 28px; width: auto; flex-shrink: 0; }
+/* ══════════════════════════════════════════════════════════════════════════
+   Team page (Sprint 4.2.1)
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.team-content {
+  display: grid; grid-template-columns: minmax(280px, 380px) 1fr;
+  gap: 1rem; padding: 0 2rem 2rem;
+}
+.team-invite-card h2, .team-content .info-card h2 { font-size: 0.95rem; margin: 0 0 0.75rem; }
+
+.invitation-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.invitation-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 0.6rem 0.85rem;
+}
+.invitation-email { display: block; font-size: 0.88rem; color: var(--text); }
+.invitation-meta { display: block; font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem; }
+
+@media (max-width: 768px) {
+  .team-content { grid-template-columns: 1fr; padding: 0 1rem 1.5rem; }
+}

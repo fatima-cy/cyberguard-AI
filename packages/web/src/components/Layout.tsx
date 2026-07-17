@@ -92,6 +92,17 @@ export function Layout({ children, sidebar, userEmail }: LayoutProps) {
           </ul>
         </div>
 
+        <div className="sidebar-nav-group">
+          <span className="sidebar-nav-section-label">Workspace</span>
+          <ul className="sidebar-nav">
+            <li className={isActive('/team') ? 'active' : ''}>
+              <Link to="/team" onClick={() => setSidebarOpen(false)}>
+                <span className="sidebar-nav-icon">👥</span> Team
+              </Link>
+            </li>
+          </ul>
+        </div>
+
         {/* Extra sidebar content (session list for chat page, recent analyses/
             saved policies for other pages). Sprint 4.1.5 fix: closes the mobile
             sidebar on click — the existing location.pathname-based auto-close

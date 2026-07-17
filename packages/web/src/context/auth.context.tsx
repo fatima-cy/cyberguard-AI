@@ -8,7 +8,7 @@ interface AuthContextValue {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<User>;
+  register: (name: string, email: string, password: string, inviteToken?: string) => Promise<User>;
   logout: () => Promise<void>;
   createOrganization: (name: string) => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -25,12 +25,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  // Register the unauthenticated callback so the API client can clear state
   useEffect(() => {
     setOnUnauthenticated(clearAuth);
   }, [clearAuth]);
 
-  // On mount, try to restore session via refresh cookie
   useEffect(() => {
     async function restoreSession() {
       try {
@@ -52,8 +50,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
   }, []);
 
-  const register = useCallback(async (name: string, email: string, password: string) => {
-    const data = await authApi.register({ name, email, password });
+  // Sprint 4.2.1: inviteToken is optional and passed straight through to the
+  // backend — when present, registerUser() on the server skips the
+  // organizationId: null default and joins the inviting org directly, so
+  // this same register() call now serves both the standalone-signup path
+  // and the invite-acceptance path without needing two separate functions.
+  const register = useCallback(async (name: string, email: string, password: string, inviteToken?: string) => {
+    const data = await authApi.register({ name, email, password, inviteToken });
     setAccessToken(data.accessToken);
     setUser(data.user);
     return data.user;
@@ -66,7 +69,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const createOrganization = useCallback(async (name: string) => {
     await authApi.createOrganization({ name, country: 'NG', industry: 'technology', timezone: 'Africa/Lagos' });
-    // Refresh user to get updated organizationId and role
     const refreshed = await authApi.refresh();
     setAccessToken(refreshed.accessToken);
     const updated = refreshed.user;

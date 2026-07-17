@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/auth.context';
 import { ApiError } from '../api/client';
+import { invitationsApi, type InvitationLookup } from '../api/organizations.api';
 
 // ─── LoginPage ────────────────────────────────────────────────────────────────
 
@@ -85,6 +86,9 @@ type RegisterStep = 'account' | 'organization';
 export function RegisterPage() {
   const { register, createOrganization } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get('invite') ?? undefined;
+
   const [step, setStep] = useState<RegisterStep>('account');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -93,13 +97,36 @@ export function RegisterPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Sprint 4.2.1 — invite lookup state
+  const [invitation, setInvitation] = useState<InvitationLookup | null>(null);
+  const [invitationError, setInvitationError] = useState('');
+  const [invitationLoading, setInvitationLoading] = useState(!!inviteToken);
+
+  useEffect(() => {
+    if (!inviteToken) return;
+    invitationsApi.lookup(inviteToken)
+      .then(data => {
+        setInvitation(data);
+        setEmail(data.invitedEmail); // pre-fill and effectively lock (input is disabled below)
+      })
+      .catch(() => setInvitationError('This invitation link is invalid or has expired.'))
+      .finally(() => setInvitationLoading(false));
+  }, [inviteToken]);
+
   async function handleAccountSubmit(e: FormEvent) {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await register(name, email, password);
-      setStep('organization');
+      await register(name, email, password, inviteToken);
+      if (inviteToken) {
+        // Invited registrations already have org + role assigned server-side
+        // (see registerUser() in auth.service.ts) — skip the org-creation
+        // step entirely and go straight in.
+        navigate('/dashboard', { replace: true });
+      } else {
+        setStep('organization');
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Registration failed. Please try again.');
     } finally {
@@ -121,6 +148,24 @@ export function RegisterPage() {
     }
   }
 
+  // Invalid/expired invite link — show a clear dead-end rather than letting
+  // the form silently fall through to standalone registration with a
+  // pre-filled email that no longer means anything.
+  if (inviteToken && invitationError) {
+    return (
+      <div className="auth-page">
+        <div className="auth-card">
+          <div className="auth-logo"><img src="/cloudsecure-icon.png" alt="CloudSecure" className="auth-logo-mark" /> CyberGuard AI</div>
+          <h1 className="auth-title">Invitation not found</h1>
+          <div className="auth-error">{invitationError}</div>
+          <p className="auth-switch">
+            <Link to="/register">Create a new account instead</Link> or <Link to="/login">sign in</Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="auth-page">
       <div className="auth-card">
@@ -129,7 +174,18 @@ export function RegisterPage() {
         {step === 'account' ? (
           <>
             <h1 className="auth-title">Create account</h1>
-            <p className="auth-subtitle">Start securing your organisation today</p>
+
+            {inviteToken && invitationLoading && (
+              <p className="auth-subtitle">Checking invitation…</p>
+            )}
+            {inviteToken && invitation && (
+              <div className="auth-info">
+                🎉 <strong>{invitation.invitedByName}</strong> invited you to join <strong>{invitation.organizationName}</strong> as a {invitation.role === 'org_admin' ? 'admin' : 'team member'}.
+              </div>
+            )}
+            {!inviteToken && (
+              <p className="auth-subtitle">Start securing your organisation today</p>
+            )}
 
             {error && <div className="auth-error">{error}</div>}
 
@@ -140,14 +196,19 @@ export function RegisterPage() {
               </div>
               <div className="form-group">
                 <label htmlFor="email">Email</label>
-                <input id="email" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@company.com" required />
+                <input
+                  id="email" type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  placeholder="you@company.com" required
+                  disabled={!!inviteToken && !!invitation}
+                  title={inviteToken && invitation ? 'This invitation is bound to this email address' : undefined}
+                />
               </div>
               <div className="form-group">
                 <label htmlFor="password">Password</label>
                 <input id="password" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min 8 chars, 1 uppercase, 1 number" required />
               </div>
-              <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
-                {loading ? 'Creating account...' : 'Continue'}
+              <button type="submit" className="btn btn-primary btn-full" disabled={loading || invitationLoading}>
+                {loading ? 'Creating account...' : inviteToken ? 'Join workspace →' : 'Continue'}
               </button>
             </form>
 

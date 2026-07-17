@@ -7,7 +7,7 @@ export interface AuthResponse {
 }
 
 export const authApi = {
-  register: (data: { name: string; email: string; password: string }) =>
+  register: (data: { name: string; email: string; password: string; inviteToken?: string }) =>
     api.post<AuthResponse>('/api/v1/auth/register', data),
 
   login: (data: { email: string; password: string }) =>

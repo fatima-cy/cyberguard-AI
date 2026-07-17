@@ -6,6 +6,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { ChatPage } from './pages/ChatPage';
 import { PhishingPage } from './pages/PhishingPage';
 import { PoliciesPage } from './pages/PoliciesPage';
+import { TeamPage } from './pages/TeamPage';
 import { ForgotPasswordPage, ResetPasswordPage, VerifyEmailPage } from './pages/IdentityPages';
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
           <Route path="/chat/:sessionId" element={<ProtectedRoute><ChatPage /></ProtectedRoute>} />
           <Route path="/phishing" element={<ProtectedRoute><PhishingPage /></ProtectedRoute>} />
           <Route path="/policies" element={<ProtectedRoute><PoliciesPage /></ProtectedRoute>} />
+          <Route path="/team" element={<ProtectedRoute><TeamPage /></ProtectedRoute>} />
 
           {/* Redirects */}
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
