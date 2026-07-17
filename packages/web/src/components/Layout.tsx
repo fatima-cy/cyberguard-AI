@@ -100,6 +100,11 @@ export function Layout({ children, sidebar, userEmail }: LayoutProps) {
                 <span className="sidebar-nav-icon">👥</span> Team
               </Link>
             </li>
+            <li className={isActive('/settings') ? 'active' : ''}>
+              <Link to="/settings" onClick={() => setSidebarOpen(false)}>
+                <span className="sidebar-nav-icon">⚙️</span> Settings
+              </Link>
+            </li>
           </ul>
         </div>
 
