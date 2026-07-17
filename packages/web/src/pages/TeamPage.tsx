@@ -2,7 +2,7 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { useAuth } from '../context/auth.context';
 import { organizationsApi } from '../api/organizations.api';
 import { Layout } from '../components/Layout';
-import type { Invitation } from '@cyberguard/shared';
+import type { Invitation, User } from '@cyberguard/shared';
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -12,11 +12,90 @@ function formatRelativeTime(iso: string): string {
   return `${days}d ago`;
 }
 
+function MemberList({ members, currentUserId, isAdmin, onRoleChange, onRemove }: {
+  members: User[];
+  currentUserId: string | undefined;
+  isAdmin: boolean;
+  onRoleChange: (userId: string, role: 'org_admin' | 'standard') => Promise<void>;
+  onRemove: (userId: string) => Promise<void>;
+}) {
+  const [error, setError] = useState('');
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null);
+
+  async function handleRoleChange(userId: string, role: 'org_admin' | 'standard') {
+    setError('');
+    setPendingId(userId);
+    try {
+      await onRoleChange(userId, role);
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to change role.');
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function handleRemove(userId: string) {
+    if (confirmingRemoveId !== userId) { setConfirmingRemoveId(userId); return; }
+    setError('');
+    setPendingId(userId);
+    try {
+      await onRemove(userId);
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to remove member.');
+    } finally {
+      setPendingId(null);
+      setConfirmingRemoveId(null);
+    }
+  }
+
+  return (
+    <div className="info-card">
+      <h2>Members ({members.length})</h2>
+      {error && <div className="chat-error">{error}</div>}
+      <ul className="invitation-list">
+        {members.map(m => (
+          <li key={m.id} className="invitation-item">
+            <div>
+              <span className="invitation-email">{m.name} {m.id === currentUserId && <span className="text-muted">(you)</span>}</span>
+              <span className="invitation-meta">{m.email}</span>
+            </div>
+            {isAdmin ? (
+              <div className="member-actions">
+                <select
+                  value={m.role === 'super_admin' ? 'org_admin' : m.role}
+                  onChange={e => handleRoleChange(m.id, e.target.value as 'org_admin' | 'standard')}
+                  disabled={pendingId === m.id || m.id === currentUserId || m.role === 'super_admin'}
+                  title={m.id === currentUserId ? "You can't change your own role" : undefined}
+                >
+                  <option value="standard">Standard</option>
+                  <option value="org_admin">Admin</option>
+                </select>
+                <button
+                  className={`session-action-btn ${confirmingRemoveId === m.id ? 'danger' : ''}`}
+                  onClick={() => handleRemove(m.id)}
+                  disabled={pendingId === m.id || m.id === currentUserId}
+                  title={m.id === currentUserId ? "You can't remove yourself" : confirmingRemoveId === m.id ? 'Confirm removal' : 'Remove member'}
+                >
+                  {confirmingRemoveId === m.id ? '⚠️' : '🗑️'}
+                </button>
+              </div>
+            ) : (
+              <span className="invitation-meta">{m.role === 'org_admin' ? 'Admin' : m.role === 'super_admin' ? 'Super Admin' : 'Standard'}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function TeamPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'org_admin' || user?.role === 'super_admin';
 
   const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [members, setMembers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -27,10 +106,11 @@ export function TeamPage() {
   const [inviteSuccess, setInviteSuccess] = useState('');
 
   useEffect(() => {
-    if (!isAdmin) { setLoading(false); return; }
-    organizationsApi.listPendingInvitations()
-      .then(d => setInvitations(d.invitations))
-      .catch(() => setError('Failed to load invitations.'))
+    // Member list is visible to everyone; invitations are admin-only.
+    const calls: Promise<any>[] = [organizationsApi.listMembers().then(d => setMembers(d.members))];
+    if (isAdmin) calls.push(organizationsApi.listPendingInvitations().then(d => setInvitations(d.invitations)));
+    Promise.all(calls)
+      .catch(() => setError('Failed to load team data.'))
       .finally(() => setLoading(false));
   }, [isAdmin]);
 
@@ -57,21 +137,14 @@ export function TeamPage() {
     setInvitations(prev => prev.filter(inv => inv.id !== id));
   }
 
-  if (!isAdmin) {
-    return (
-      <Layout userEmail={user?.email}>
-        <main className="main-panel">
-          <header className="panel-header">
-            <div><h1>Team</h1></div>
-          </header>
-          <div className="tool-empty">
-            <div className="tool-empty-icon">🔒</div>
-            <h3>Admin access required</h3>
-            <p>Only organisation admins can invite teammates or manage the team. Contact your admin if you need someone added.</p>
-          </div>
-        </main>
-      </Layout>
-    );
+  async function handleRoleChange(userId: string, newRole: 'org_admin' | 'standard') {
+    await organizationsApi.changeMemberRole(userId, newRole);
+    setMembers(prev => prev.map(m => m.id === userId ? { ...m, role: newRole } : m));
+  }
+
+  async function handleRemoveMember(userId: string) {
+    await organizationsApi.removeMember(userId);
+    setMembers(prev => prev.filter(m => m.id !== userId));
   }
 
   return (
@@ -80,53 +153,61 @@ export function TeamPage() {
         <header className="panel-header">
           <div>
             <h1>Team</h1>
-            <p className="panel-subtitle">Invite teammates and manage pending invitations</p>
+            <p className="panel-subtitle">{isAdmin ? 'Invite teammates and manage your team' : 'See who has access to this workspace'}</p>
           </div>
         </header>
 
         <div className="team-content">
-          <div className="info-card team-invite-card">
-            <h2>Invite a teammate</h2>
-            <form className="phishing-form" onSubmit={handleInvite}>
-              <label>Email</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="teammate@company.com" required />
+          {isAdmin ? (
+            <div className="info-card team-invite-card">
+              <h2>Invite a teammate</h2>
+              <form className="phishing-form" onSubmit={handleInvite}>
+                <label>Email</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="teammate@company.com" required />
 
-              <label>Role</label>
-              <select value={role} onChange={e => setRole(e.target.value as 'org_admin' | 'standard')}>
-                <option value="standard">Standard — full access to AI tools</option>
-                <option value="org_admin">Admin — also manages team & org settings</option>
-              </select>
+                <label>Role</label>
+                <select value={role} onChange={e => setRole(e.target.value as 'org_admin' | 'standard')}>
+                  <option value="standard">Standard — full access to AI tools</option>
+                  <option value="org_admin">Admin — also manages team & org settings</option>
+                </select>
 
-              {inviteError && <div className="chat-error">{inviteError}</div>}
-              {inviteSuccess && <div className="auth-success" style={{ marginTop: '0.5rem' }}>{inviteSuccess}</div>}
+                {inviteError && <div className="chat-error">{inviteError}</div>}
+                {inviteSuccess && <div className="auth-success" style={{ marginTop: '0.5rem' }}>{inviteSuccess}</div>}
 
-              <button type="submit" className="btn btn-primary" disabled={inviting}>
-                {inviting ? 'Sending…' : 'Send invitation'}
-              </button>
-            </form>
-          </div>
+                <button type="submit" className="btn btn-primary" disabled={inviting}>
+                  {inviting ? 'Sending…' : 'Send invitation'}
+                </button>
+              </form>
 
-          <div className="info-card">
-            <h2>Pending invitations</h2>
-            {loading && <p className="text-muted">Loading…</p>}
-            {error && <div className="chat-error">{error}</div>}
-            {!loading && invitations.length === 0 && (
-              <p className="text-muted">No pending invitations.</p>
-            )}
-            {invitations.length > 0 && (
-              <ul className="invitation-list">
-                {invitations.map(inv => (
-                  <li key={inv.id} className="invitation-item">
-                    <div>
-                      <span className="invitation-email">{inv.invitedEmail}</span>
-                      <span className="invitation-meta">{inv.role === 'org_admin' ? 'Admin' : 'Standard'} · sent {formatRelativeTime(inv.createdAt)}</span>
-                    </div>
-                    <button className="session-action-btn" onClick={() => handleRevoke(inv.id)} title="Revoke invitation">🗑️</button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+              {invitations.length > 0 && (
+                <>
+                  <h2 style={{ marginTop: '1.5rem' }}>Pending invitations</h2>
+                  <ul className="invitation-list">
+                    {invitations.map(inv => (
+                      <li key={inv.id} className="invitation-item">
+                        <div>
+                          <span className="invitation-email">{inv.invitedEmail}</span>
+                          <span className="invitation-meta">{inv.role === 'org_admin' ? 'Admin' : 'Standard'} · sent {formatRelativeTime(inv.createdAt)}</span>
+                        </div>
+                        <button className="session-action-btn" onClick={() => handleRevoke(inv.id)} title="Revoke invitation">🗑️</button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          ) : (
+            <div className="info-card">
+              <h2>Invitations</h2>
+              <p className="text-muted">Only admins can invite teammates. Contact your admin if you need someone added.</p>
+            </div>
+          )}
+
+          {loading && <div className="info-card"><p className="text-muted">Loading…</p></div>}
+          {error && <div className="chat-error">{error}</div>}
+          {!loading && (
+            <MemberList members={members} currentUserId={user?.id} isAdmin={isAdmin} onRoleChange={handleRoleChange} onRemove={handleRemoveMember} />
+          )}
         </div>
       </main>
     </Layout>

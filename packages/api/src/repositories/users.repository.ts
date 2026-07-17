@@ -43,11 +43,21 @@ export async function findUserByToken(
     query: `SELECT * FROM c WHERE c.${field} = @token`,
     parameters: [{ name: '@token', value: token }],
   };
-  console.log('findUserByToken query:', querySpec.query, token.substring(0, 10));
   const { resources } = await container(CONTAINER)
     .items.query<UserDocument>(querySpec)
     .fetchAll();
   return resources[0] ?? null;
+}
+
+/** Sprint 4.2.2 — used by Team Member Management to list everyone in an org. */
+export async function findUsersByOrganization(organizationId: string): Promise<UserDocument[]> {
+  const { resources } = await container(CONTAINER)
+    .items.query<UserDocument>({
+      query: 'SELECT * FROM c WHERE c.organizationId = @orgId ORDER BY c.createdAt ASC',
+      parameters: [{ name: '@orgId', value: organizationId }],
+    })
+    .fetchAll();
+  return resources;
 }
 
 export async function createUser(
@@ -92,4 +102,11 @@ export async function updateUser(
       .map(([key, value]) => ({ op: 'set' as const, path: `/${key}`, value }));
     await container(CONTAINER).item(userId, currentPartitionKey).patch(operations);
   }
+}
+
+/** Sprint 4.2.2 — deletes a user document entirely (member removal). Requires
+ *  the current partition key like updateUser does, since users are
+ *  partitioned by organizationId. */
+export async function deleteUser(userId: string, currentPartitionKey: string | null): Promise<void> {
+  await container(CONTAINER).item(userId, currentPartitionKey).delete();
 }

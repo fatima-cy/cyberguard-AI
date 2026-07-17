@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Organisation, Invitation } from '@cyberguard/shared';
+import type { Organisation, Invitation, User } from '@cyberguard/shared';
 
 export interface InvitationLookup {
   organizationName: string;
@@ -22,10 +22,18 @@ export const organizationsApi = {
 
   revokeInvitation: (id: string) =>
     api.delete<{ id: string; revoked: boolean }>(`/api/v1/organizations/invitations/${id}`),
+
+  // Sprint 4.2.2 — Member Management
+  listMembers: () =>
+    api.get<{ members: User[] }>('/api/v1/organizations/members'),
+
+  changeMemberRole: (userId: string, role: 'org_admin' | 'standard') =>
+    api.patch<{ userId: string; role: string }>(`/api/v1/organizations/members/${userId}/role`, { role }),
+
+  removeMember: (userId: string) =>
+    api.delete<{ userId: string; removed: boolean }>(`/api/v1/organizations/members/${userId}`),
 };
 
 export const invitationsApi = {
-  // Unauthenticated lookup — used by the registration page to show
-  // "You've been invited to join {org}" before the person has an account.
   lookup: (token: string) => api.get<InvitationLookup>(`/api/v1/invitations/${token}`, { skipAuth: true }),
 };

@@ -5,6 +5,7 @@
  *
  * Sprint 1.4: POST / (create organization)
  * Sprint 4.2.1: Invitation management (create/list/revoke), org settings update
+ * Sprint 4.2.2: Member management (list/role-change/remove)
  *
  * @see Blueprint §4.2 — Multi-Tenancy
  */
@@ -14,7 +15,7 @@ import { z } from 'zod';
 import { validate } from '../../middleware/validate.middleware';
 import { requireAuth, requireRole } from '../../middleware/auth.middleware';
 import { createOrganizationSchema } from './organizations.types';
-import { createOrganizationForUser } from './organizations.service';
+import { createOrganizationForUser, listMembers, changeMemberRole, removeMember } from './organizations.service';
 import { findOrganizationById, updateOrganization } from '../../repositories/organizations.repository';
 import { findUserById } from '../../repositories/users.repository';
 import { sendInvitation, revokeInvitation, listPendingInvitations } from '../invitations/invitations.service';
@@ -22,7 +23,6 @@ import { ERROR_TYPES } from '@cyberguard/shared';
 
 export const organizationsRouter = Router();
 
-// All organization routes require authentication
 organizationsRouter.use(requireAuth);
 
 // ─── POST / — Create organisation ────────────────────────────────────────────
@@ -91,8 +91,7 @@ organizationsRouter.get('/', async (req: Request, res: Response) => {
   res.status(200).json({ organization });
 });
 
-// ─── PATCH / — Update organisation settings (Sprint 4.2.3, added now since
-// it's a trivial addition on top of the same requireOrganisation context) ────
+// ─── PATCH / — Update organisation settings ──────────────────────────────────
 
 const updateOrgSchema = z.object({
   name: z.string().min(1).max(200).optional(),
@@ -125,7 +124,6 @@ const createInvitationSchema = z.object({
   role: z.enum(['org_admin', 'standard']),
 });
 
-// POST /api/v1/organizations/invitations — org_admin only
 organizationsRouter.post(
   '/invitations',
   requireRole('org_admin', 'super_admin'),
@@ -152,7 +150,6 @@ organizationsRouter.post(
   },
 );
 
-// GET /api/v1/organizations/invitations — org_admin only, pending invites
 organizationsRouter.get(
   '/invitations',
   requireRole('org_admin', 'super_admin'),
@@ -167,7 +164,6 @@ organizationsRouter.get(
   },
 );
 
-// DELETE /api/v1/organizations/invitations/:id — org_admin only, revoke
 organizationsRouter.delete(
   '/invitations/:id',
   requireRole('org_admin', 'super_admin'),
@@ -183,6 +179,76 @@ organizationsRouter.delete(
     } catch (err: any) {
       if (err.code === 'INVITATION_NOT_FOUND') {
         res.status(404).json({ type: ERROR_TYPES.NOT_FOUND, title: 'Invitation Not Found', status: 404, detail: 'This invitation does not exist.', instance: req.path });
+        return;
+      }
+      throw err;
+    }
+  },
+);
+
+// ─── Member Management (Sprint 4.2.2) ─────────────────────────────────────────
+
+// GET /api/v1/organizations/members — any member can see the team list
+organizationsRouter.get('/members', async (req: Request, res: Response) => {
+  const organizationId = req.user!.organizationId;
+  if (!organizationId) {
+    res.status(404).json({ type: ERROR_TYPES.NOT_FOUND, title: 'No Organisation', status: 404, detail: 'You are not a member of any organisation yet.', instance: req.path });
+    return;
+  }
+  const members = await listMembers(organizationId);
+  res.status(200).json({ members });
+});
+
+const changeRoleSchema = z.object({ role: z.enum(['org_admin', 'standard']) });
+
+// PATCH /api/v1/organizations/members/:userId/role — org_admin only
+organizationsRouter.patch(
+  '/members/:userId/role',
+  requireRole('org_admin', 'super_admin'),
+  validate(changeRoleSchema),
+  async (req: Request, res: Response) => {
+    const organizationId = req.user!.organizationId;
+    if (!organizationId) {
+      res.status(404).json({ type: ERROR_TYPES.NOT_FOUND, title: 'No Organisation', status: 404, detail: 'You are not a member of any organisation yet.', instance: req.path });
+      return;
+    }
+    try {
+      await changeMemberRole(organizationId, req.params.userId, req.body.role);
+      res.status(200).json({ userId: req.params.userId, role: req.body.role });
+    } catch (err: any) {
+      if (err.code === 'LAST_ADMIN') {
+        res.status(409).json({ type: ERROR_TYPES.BAD_REQUEST, title: 'Cannot Change Role', status: 409, detail: 'This is the last admin in the organisation — promote another member first.', instance: req.path });
+        return;
+      }
+      if (err.code === 'MEMBER_NOT_FOUND') {
+        res.status(404).json({ type: ERROR_TYPES.NOT_FOUND, title: 'Member Not Found', status: 404, detail: 'This member does not exist in your organisation.', instance: req.path });
+        return;
+      }
+      throw err;
+    }
+  },
+);
+
+// DELETE /api/v1/organizations/members/:userId — org_admin only
+organizationsRouter.delete(
+  '/members/:userId',
+  requireRole('org_admin', 'super_admin'),
+  async (req: Request, res: Response) => {
+    const organizationId = req.user!.organizationId;
+    if (!organizationId) {
+      res.status(404).json({ type: ERROR_TYPES.NOT_FOUND, title: 'No Organisation', status: 404, detail: 'You are not a member of any organisation yet.', instance: req.path });
+      return;
+    }
+    try {
+      await removeMember(organizationId, req.params.userId);
+      res.status(200).json({ userId: req.params.userId, removed: true });
+    } catch (err: any) {
+      if (err.code === 'LAST_ADMIN') {
+        res.status(409).json({ type: ERROR_TYPES.BAD_REQUEST, title: 'Cannot Remove Member', status: 409, detail: 'This is the last admin in the organisation — promote another member first.', instance: req.path });
+        return;
+      }
+      if (err.code === 'MEMBER_NOT_FOUND') {
+        res.status(404).json({ type: ERROR_TYPES.NOT_FOUND, title: 'Member Not Found', status: 404, detail: 'This member does not exist in your organisation.', instance: req.path });
         return;
       }
       throw err;

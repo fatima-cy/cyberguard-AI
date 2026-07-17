@@ -1084,3 +1084,9 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
 @media (max-width: 768px) {
   .team-content { grid-template-columns: 1fr; padding: 0 1rem 1.5rem; }
 }
+/* Sprint 4.2.2 — member row actions (role dropdown + remove button) */
+.member-actions { display: flex; align-items: center; gap: 0.5rem; }
+.member-actions select {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); padding: 0.35rem 0.6rem; font-size: 0.82rem; font-family: var(--font);
+}
