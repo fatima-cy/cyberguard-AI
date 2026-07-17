@@ -121,3 +121,36 @@ export async function sendPasswordReset(
     },
   });
 }
+
+export async function sendInvitationEmail(
+  to: string,
+  organizationName: string,
+  inviterName: string,
+  token: string,
+): Promise<void> {
+  const acceptUrl = `${config.app.baseUrl}/register?invite=${token}`;
+
+  await sendEmail({
+    senderAddress: config.acs.senderAddress,
+    recipients: { to: [{ address: to }] },
+    content: {
+      subject: `${inviterName} invited you to join ${organizationName} on CyberGuard AI`,
+      plainText: `Hi,\n\n${inviterName} has invited you to join ${organizationName} on CyberGuard AI.\n\nAccept the invitation by visiting:\n${acceptUrl}\n\nThis link expires in 7 days.\n\nIf you weren't expecting this invitation, you can safely ignore this email.\n\nThe CyberGuard AI Team`,
+      html: `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0f1e; color: #e2e8f0; margin: 0; padding: 40px 20px;">
+  <div style="max-width: 520px; margin: 0 auto; background: #111827; border: 1px solid #1e2d45; border-radius: 12px; padding: 40px;">
+    <div style="font-size: 1.5rem; font-weight: 700; margin-bottom: 24px;">🛡️ CyberGuard AI</div>
+    <h1 style="font-size: 1.25rem; margin: 0 0 12px;">You've been invited to join ${organizationName}</h1>
+    <p style="color: #64748b; margin: 0 0 24px;">${inviterName} has invited you to collaborate on ${organizationName}'s CyberGuard AI workspace — AI-grounded threat analysis, phishing detection, and security policy generation.</p>
+    <a href="${acceptUrl}" style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Accept invitation</a>
+    <p style="color: #64748b; font-size: 0.875rem; margin: 24px 0 0;">This link expires in 7 days. If you weren't expecting this invitation, you can safely ignore this email.</p>
+    <p style="color: #64748b; font-size: 0.75rem; margin: 8px 0 0;">Or copy this URL: ${acceptUrl}</p>
+  </div>
+</body>
+</html>`,
+    },
+  });
+}

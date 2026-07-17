@@ -13,6 +13,8 @@ export * from './types/chat.types';
 export * from './types/knowledge.types';
 export * from './types/phishing.types';
 export * from './types/policies.types';
+export * from './types/invitation.types';
+export * from './types/invitation.types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 export * from './constants/errors';

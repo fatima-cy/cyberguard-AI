@@ -55,6 +55,12 @@ export interface RegisterResult {
   refreshToken: string;
 }
 
+// Sprint 4.2.1 — invitation-aware registration. Kept as imports at the top
+// of this modified block rather than a separate file, since these are only
+// used here.
+import { validateAndConsumeInvitation } from '../invitations/invitations.service';
+import { incrementMemberCount } from '../../repositories/organizations.repository';
+
 export async function registerUser(data: RegisterRequest): Promise<RegisterResult> {
   const existing = await findUserByEmail(data.email);
   if (existing) {
@@ -62,6 +68,16 @@ export async function registerUser(data: RegisterRequest): Promise<RegisterResul
     err.statusCode = 409;
     err.code = 'EMAIL_ALREADY_EXISTS';
     throw err;
+  }
+
+  // Sprint 4.2.1: if an invite token is present, this registration joins an
+  // EXISTING org with a pre-assigned role instead of starting with
+  // organizationId: null. Validated/consumed BEFORE creating the user so a
+  // bad token fails the whole registration cleanly rather than leaving an
+  // orphaned user record with no org.
+  let inviteResult: { organizationId: string; organizationName: string; role: 'org_admin' | 'standard' } | null = null;
+  if (data.inviteToken) {
+    inviteResult = await validateAndConsumeInvitation(data.inviteToken, data.email);
   }
 
   const passwordHash = await bcrypt.hash(data.password, BCRYPT_ROUNDS);
@@ -72,27 +88,38 @@ export async function registerUser(data: RegisterRequest): Promise<RegisterResul
     id: userId,
     email: data.email,
     name: data.name,
-    role: 'standard',
-    organizationId: null,
+    role: inviteResult ? inviteResult.role : 'standard',
+    organizationId: inviteResult ? inviteResult.organizationId : null,
     passwordHash,
     refreshTokenVersion: 0,
-    emailVerified: false,
-    emailVerificationToken: verificationToken,
+    // Invited users' email is implicitly verified — the invitation itself
+    // was sent to this exact address, which is proof of ownership.
+    emailVerified: inviteResult ? true : false,
+    emailVerificationToken: inviteResult ? undefined : verificationToken,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
 
   const user = toSafeUser(userDoc);
 
-  // Send verification email — non-blocking, don't fail registration if email fails
-  sendEmailVerification(data.email, data.name, verificationToken).catch(err => {
-    logger.warn('Failed to send verification email', { userId, error: err.message });
-  });
+  if (inviteResult) {
+    await incrementMemberCount(inviteResult.organizationId).catch(err => {
+      // Don't fail registration over this — the user record and org
+      // assignment are already correct; memberCount is a display counter,
+      // not the source of truth for membership itself.
+      logger.error('Failed to increment memberCount after invited registration', { userId, organizationId: inviteResult!.organizationId, error: err.message });
+    });
+  } else {
+    // Send verification email — non-blocking, don't fail registration if email fails
+    sendEmailVerification(data.email, data.name, verificationToken).catch(err => {
+      logger.warn('Failed to send verification email', { userId, error: err.message });
+    });
+  }
 
   const accessToken = generateAccessToken(user);
   const refreshToken = generateRefreshToken(userId, 0);
 
-  logger.info('User registered', { userId, email: data.email });
+  logger.info('User registered', { userId, email: data.email, viaInvite: !!inviteResult });
   return { user, accessToken, refreshToken };
 }
 

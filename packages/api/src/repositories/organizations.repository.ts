@@ -41,3 +41,36 @@ export async function createOrganization(doc: OrganisationDocument): Promise<Org
   if (!resource) throw new Error('Failed to create organization document in Cosmos');
   return resource;
 }
+
+/**
+ * Sprint 4.2.1/4.2.3 — partial update of org name/settings. `country`,
+ * `industry`, `timezone` are nested under `settings` on the document, so
+ * this builds nested patch paths rather than a flat Object.entries loop
+ * like updateUser() uses — the two documents have different shapes.
+ */
+export async function updateOrganization(
+  orgId: string,
+  updates: { name?: string; country?: string; industry?: string; timezone?: string },
+): Promise<void> {
+  const operations: { op: 'set'; path: string; value: any }[] = [];
+  if (updates.name !== undefined) operations.push({ op: 'set', path: '/name', value: updates.name });
+  if (updates.country !== undefined) operations.push({ op: 'set', path: '/settings/country', value: updates.country });
+  if (updates.industry !== undefined) operations.push({ op: 'set', path: '/settings/industry', value: updates.industry });
+  if (updates.timezone !== undefined) operations.push({ op: 'set', path: '/settings/timezone', value: updates.timezone });
+  operations.push({ op: 'set', path: '/updatedAt', value: new Date().toISOString() });
+
+  if (operations.length === 1) return; // only updatedAt would be set — nothing real to update
+  await container(CONTAINER).item(orgId, orgId).patch(operations);
+}
+
+/** Sprint 4.2.1 — increments memberCount when an invited user completes
+ *  registration. Kept as a dedicated small operation rather than a generic
+ *  patch call so the increment-by-1 semantics (not an overwrite) are explicit. */
+export async function incrementMemberCount(orgId: string): Promise<void> {
+  const org = await findOrganizationById(orgId);
+  if (!org) throw new Error(`Organization ${orgId} not found for memberCount increment`);
+  await container(CONTAINER).item(orgId, orgId).patch([
+    { op: 'set', path: '/memberCount', value: org.memberCount + 1 },
+    { op: 'set', path: '/updatedAt', value: new Date().toISOString() },
+  ]);
+}

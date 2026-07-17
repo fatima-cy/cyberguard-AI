@@ -34,6 +34,11 @@ export const registerSchema = z.object({
     .toLowerCase()
     .trim(),
   password: passwordSchema,
+  // Sprint 4.2.1 — present when registering via an invitation link
+  // (/register?invite=<token>). When set, registerUser() joins the
+  // inviting org with the invited role instead of creating a standalone
+  // account with organizationId: null.
+  inviteToken: z.string().optional(),
 });
 
 export type RegisterRequest = z.infer<typeof registerSchema>;
