@@ -2,15 +2,29 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { useAuth } from '../context/auth.context';
 import { organizationsApi } from '../api/organizations.api';
 import { Layout } from '../components/Layout';
-import type { Invitation, User } from '@cyberguard/shared';
+import type { Invitation, User, AuditEvent, AuditAction } from '@cyberguard/shared';
 
 function formatRelativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
   const days = Math.floor(diff / 86400000);
-  if (days === 0) return 'today';
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
   if (days === 1) return 'yesterday';
   return `${days}d ago`;
 }
+
+const AUDIT_ICON: Record<AuditAction, string> = {
+  'organization.updated': '⚙️',
+  'invitation.sent': '✉️',
+  'invitation.revoked': '🚫',
+  'member.role_changed': '🔄',
+  'member.removed': '👋',
+  'policy.generated': '📄',
+  'phishing.analyzed': '🎣',
+};
 
 function MemberList({ members, currentUserId, isAdmin, onRoleChange, onRemove }: {
   members: User[];
@@ -90,12 +104,32 @@ function MemberList({ members, currentUserId, isAdmin, onRoleChange, onRemove }:
   );
 }
 
+function AuditLogFeed({ events }: { events: AuditEvent[] }) {
+  if (events.length === 0) {
+    return <p className="text-muted">No activity recorded yet.</p>;
+  }
+  return (
+    <div className="activity-list">
+      {events.map(ev => (
+        <div key={ev.id} className="activity-item audit-item">
+          <div className="activity-icon">{AUDIT_ICON[ev.action] ?? '•'}</div>
+          <div className="activity-content">
+            <div className="activity-title">{ev.summary}</div>
+            <div className="activity-meta">{ev.userName} · {formatRelativeTime(ev.createdAt)}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function TeamPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'org_admin' || user?.role === 'super_admin';
 
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [members, setMembers] = useState<User[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -106,9 +140,11 @@ export function TeamPage() {
   const [inviteSuccess, setInviteSuccess] = useState('');
 
   useEffect(() => {
-    // Member list is visible to everyone; invitations are admin-only.
     const calls: Promise<any>[] = [organizationsApi.listMembers().then(d => setMembers(d.members))];
-    if (isAdmin) calls.push(organizationsApi.listPendingInvitations().then(d => setInvitations(d.invitations)));
+    if (isAdmin) {
+      calls.push(organizationsApi.listPendingInvitations().then(d => setInvitations(d.invitations)));
+      calls.push(organizationsApi.listAuditLog().then(d => setAuditEvents(d.events)));
+    }
     Promise.all(calls)
       .catch(() => setError('Failed to load team data.'))
       .finally(() => setLoading(false));
@@ -125,6 +161,7 @@ export function TeamPage() {
       setInviteSuccess(`Invitation sent to ${email.trim()}.`);
       setEmail('');
       setRole('standard');
+      organizationsApi.listAuditLog().then(d => setAuditEvents(d.events)).catch(() => {});
     } catch (err: any) {
       setInviteError(err?.message ?? 'Failed to send invitation. Please try again.');
     } finally {
@@ -135,16 +172,19 @@ export function TeamPage() {
   async function handleRevoke(id: string) {
     await organizationsApi.revokeInvitation(id);
     setInvitations(prev => prev.filter(inv => inv.id !== id));
+    organizationsApi.listAuditLog().then(d => setAuditEvents(d.events)).catch(() => {});
   }
 
   async function handleRoleChange(userId: string, newRole: 'org_admin' | 'standard') {
     await organizationsApi.changeMemberRole(userId, newRole);
     setMembers(prev => prev.map(m => m.id === userId ? { ...m, role: newRole } : m));
+    organizationsApi.listAuditLog().then(d => setAuditEvents(d.events)).catch(() => {});
   }
 
   async function handleRemoveMember(userId: string) {
     await organizationsApi.removeMember(userId);
     setMembers(prev => prev.filter(m => m.id !== userId));
+    organizationsApi.listAuditLog().then(d => setAuditEvents(d.events)).catch(() => {});
   }
 
   return (
@@ -209,6 +249,13 @@ export function TeamPage() {
             <MemberList members={members} currentUserId={user?.id} isAdmin={isAdmin} onRoleChange={handleRoleChange} onRemove={handleRemoveMember} />
           )}
         </div>
+
+        {isAdmin && !loading && (
+          <div className="info-card audit-log-card">
+            <h2>Activity Log</h2>
+            <AuditLogFeed events={auditEvents} />
+          </div>
+        )}
       </main>
     </Layout>
   );

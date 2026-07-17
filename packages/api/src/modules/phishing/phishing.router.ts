@@ -11,6 +11,8 @@ import { requireAuth, requireOrganisation } from '../../middleware/auth.middlewa
 import { validate, validateQuery, paginationSchema } from '../../middleware/validate.middleware';
 import { analyzePhishing } from './phishing.service';
 import { saveAnalysis, listAnalyses } from '../../repositories/phishing.repository';
+import { findUserById } from '../../repositories/users.repository';
+import { logAuditEvent } from '../../repositories/audit.repository';
 import { ERROR_TYPES } from '@cyberguard/shared';
 
 export const phishingRouter = Router();
@@ -33,6 +35,11 @@ phishingRouter.post('/analyze', requireAuth, requireOrganisation, validate(analy
   try {
     const analysis = await analyzePhishing(req.body, organizationId!, userId);
     const saved = await saveAnalysis(analysis);
+
+    findUserById(userId).then(actor => {
+      logAuditEvent(organizationId!, userId, actor?.name ?? 'Unknown', 'phishing.analyzed', `Ran a phishing analysis — result: ${saved.riskLevel}`, saved.id).catch(() => {});
+    }).catch(() => {});
+
     res.status(200).json(saved);
   } catch (err: any) {
     if (err.code === 'AI_INVALID_RESPONSE') {

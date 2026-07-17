@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Organisation, Invitation, User } from '@cyberguard/shared';
+import type { Organisation, Invitation, User, AuditEvent } from '@cyberguard/shared';
 
 export interface InvitationLookup {
   organizationName: string;
@@ -23,7 +23,6 @@ export const organizationsApi = {
   revokeInvitation: (id: string) =>
     api.delete<{ id: string; revoked: boolean }>(`/api/v1/organizations/invitations/${id}`),
 
-  // Sprint 4.2.2 — Member Management
   listMembers: () =>
     api.get<{ members: User[] }>('/api/v1/organizations/members'),
 
@@ -32,6 +31,10 @@ export const organizationsApi = {
 
   removeMember: (userId: string) =>
     api.delete<{ userId: string; removed: boolean }>(`/api/v1/organizations/members/${userId}`),
+
+  // Sprint 4.2.5 — Audit Log
+  listAuditLog: (page = 1, limit = 50) =>
+    api.get<{ events: AuditEvent[]; page: number; limit: number }>(`/api/v1/organizations/audit-log?page=${page}&limit=${limit}`),
 };
 
 export const invitationsApi = {

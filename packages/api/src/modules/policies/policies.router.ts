@@ -10,6 +10,8 @@ import { requireAuth, requireOrganisation } from '../../middleware/auth.middlewa
 import { validate, validateQuery, paginationSchema } from '../../middleware/validate.middleware';
 import { generatePolicy } from './policies.service';
 import { savePolicy, listPolicies, getPolicyById, deletePolicy } from '../../repositories/policies.repository';
+import { findUserById } from '../../repositories/users.repository';
+import { logAuditEvent } from '../../repositories/audit.repository';
 import { ERROR_TYPES } from '@cyberguard/shared';
 
 export const policiesRouter = Router();
@@ -34,6 +36,11 @@ policiesRouter.post('/generate', requireAuth, requireOrganisation, validate(gene
       type, sector, { organizationName, additionalContext }, organizationId!, userId,
     );
     const saved = await savePolicy(policy);
+
+    findUserById(userId).then(actor => {
+      logAuditEvent(organizationId!, userId, actor?.name ?? 'Unknown', 'policy.generated', `Generated a ${type.replace('_', ' ')} policy for ${sector.replace('_', ' ')}`, saved.id).catch(() => {});
+    }).catch(() => {});
+
     res.status(200).json(saved);
   } catch (err: any) {
     if (err.code === 'GENERATION_TIMEOUT') {

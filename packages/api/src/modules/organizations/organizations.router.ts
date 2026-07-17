@@ -6,19 +6,23 @@
  * Sprint 1.4: POST / (create organization)
  * Sprint 4.2.1: Invitation management (create/list/revoke), org settings update
  * Sprint 4.2.2: Member management (list/role-change/remove)
+ * Sprint 4.2.5: Audit log — every mutating action below logs a fire-and-forget
+ * event (see logAuditEvent's doc comment for why it's never awaited inline
+ * with the action's own response).
  *
  * @see Blueprint §4.2 — Multi-Tenancy
  */
 
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
-import { validate } from '../../middleware/validate.middleware';
+import { validate, validateQuery, paginationSchema } from '../../middleware/validate.middleware';
 import { requireAuth, requireRole } from '../../middleware/auth.middleware';
 import { createOrganizationSchema } from './organizations.types';
 import { createOrganizationForUser, listMembers, changeMemberRole, removeMember } from './organizations.service';
 import { findOrganizationById, updateOrganization } from '../../repositories/organizations.repository';
 import { findUserById } from '../../repositories/users.repository';
 import { sendInvitation, revokeInvitation, listPendingInvitations } from '../invitations/invitations.service';
+import { logAuditEvent, listAuditEvents } from '../../repositories/audit.repository';
 import { ERROR_TYPES } from '@cyberguard/shared';
 
 export const organizationsRouter = Router();
@@ -113,6 +117,10 @@ organizationsRouter.patch(
     const { name, country, industry, timezone } = req.body;
     await updateOrganization(organizationId, { name, country, industry, timezone });
     const organization = await findOrganizationById(organizationId);
+
+    const actor = await findUserById(req.user!.userId);
+    logAuditEvent(organizationId, req.user!.userId, actor?.name ?? 'Unknown', 'organization.updated', 'Updated organisation settings').catch(() => {});
+
     res.status(200).json({ organization });
   },
 );
@@ -146,6 +154,9 @@ organizationsRouter.post(
 
     const { email, role } = req.body;
     const invitation = await sendInvitation(organizationId, org.name, req.user!.userId, inviter.name, email, role);
+
+    logAuditEvent(organizationId, req.user!.userId, inviter.name, 'invitation.sent', `Invited ${email} as ${role === 'org_admin' ? 'Admin' : 'Standard'}`, email).catch(() => {});
+
     res.status(201).json({ invitation });
   },
 );
@@ -175,6 +186,10 @@ organizationsRouter.delete(
     }
     try {
       await revokeInvitation(req.params.id, organizationId);
+
+      const actor = await findUserById(req.user!.userId);
+      logAuditEvent(organizationId, req.user!.userId, actor?.name ?? 'Unknown', 'invitation.revoked', 'Revoked a pending invitation', req.params.id).catch(() => {});
+
       res.status(200).json({ id: req.params.id, revoked: true });
     } catch (err: any) {
       if (err.code === 'INVITATION_NOT_FOUND') {
@@ -188,7 +203,6 @@ organizationsRouter.delete(
 
 // ─── Member Management (Sprint 4.2.2) ─────────────────────────────────────────
 
-// GET /api/v1/organizations/members — any member can see the team list
 organizationsRouter.get('/members', async (req: Request, res: Response) => {
   const organizationId = req.user!.organizationId;
   if (!organizationId) {
@@ -201,7 +215,6 @@ organizationsRouter.get('/members', async (req: Request, res: Response) => {
 
 const changeRoleSchema = z.object({ role: z.enum(['org_admin', 'standard']) });
 
-// PATCH /api/v1/organizations/members/:userId/role — org_admin only
 organizationsRouter.patch(
   '/members/:userId/role',
   requireRole('org_admin', 'super_admin'),
@@ -214,6 +227,10 @@ organizationsRouter.patch(
     }
     try {
       await changeMemberRole(organizationId, req.params.userId, req.body.role);
+
+      const [actor, target] = await Promise.all([findUserById(req.user!.userId), findUserById(req.params.userId)]);
+      logAuditEvent(organizationId, req.user!.userId, actor?.name ?? 'Unknown', 'member.role_changed', `Changed ${target?.name ?? req.params.userId}'s role to ${req.body.role === 'org_admin' ? 'Admin' : 'Standard'}`, req.params.userId).catch(() => {});
+
       res.status(200).json({ userId: req.params.userId, role: req.body.role });
     } catch (err: any) {
       if (err.code === 'LAST_ADMIN') {
@@ -229,7 +246,6 @@ organizationsRouter.patch(
   },
 );
 
-// DELETE /api/v1/organizations/members/:userId — org_admin only
 organizationsRouter.delete(
   '/members/:userId',
   requireRole('org_admin', 'super_admin'),
@@ -240,7 +256,12 @@ organizationsRouter.delete(
       return;
     }
     try {
+      const target = await findUserById(req.params.userId);
       await removeMember(organizationId, req.params.userId);
+
+      const actor = await findUserById(req.user!.userId);
+      logAuditEvent(organizationId, req.user!.userId, actor?.name ?? 'Unknown', 'member.removed', `Removed ${target?.name ?? req.params.userId} from the organisation`, req.params.userId).catch(() => {});
+
       res.status(200).json({ userId: req.params.userId, removed: true });
     } catch (err: any) {
       if (err.code === 'LAST_ADMIN') {
@@ -253,5 +274,23 @@ organizationsRouter.delete(
       }
       throw err;
     }
+  },
+);
+
+// ─── Audit Log (Sprint 4.2.5) ──────────────────────────────────────────────────
+
+organizationsRouter.get(
+  '/audit-log',
+  requireRole('org_admin', 'super_admin'),
+  validateQuery(paginationSchema),
+  async (req: Request, res: Response) => {
+    const organizationId = req.user!.organizationId;
+    if (!organizationId) {
+      res.status(404).json({ type: ERROR_TYPES.NOT_FOUND, title: 'No Organisation', status: 404, detail: 'You are not a member of any organisation yet.', instance: req.path });
+      return;
+    }
+    const { page, limit } = req.query as any;
+    const events = await listAuditEvents(organizationId, Number(page), Number(limit));
+    res.status(200).json({ events, page: Number(page), limit: Number(limit) });
   },
 );

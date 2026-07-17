@@ -1096,3 +1096,10 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
 
 .settings-card { max-width: 480px; margin: 0 2rem; }
 .settings-meta { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+/* Sprint 4.2.5 — audit log card sits full-width below the team grid */
+.audit-log-card { margin: 0 2rem 2rem; }
+.audit-log-card .activity-list { max-height: 420px; overflow-y: auto; }
+
+@media (max-width: 768px) {
+  .audit-log-card { margin: 0 1rem 1.5rem; }
+}

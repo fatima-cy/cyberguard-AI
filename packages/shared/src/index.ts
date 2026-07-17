@@ -14,7 +14,9 @@ export * from './types/knowledge.types';
 export * from './types/phishing.types';
 export * from './types/policies.types';
 export * from './types/invitation.types';
+export * from './types/audit.types';
 export * from './types/invitation.types';
+export * from './types/audit.types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 export * from './constants/errors';
