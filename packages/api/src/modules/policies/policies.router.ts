@@ -12,6 +12,7 @@ import { generatePolicy } from './policies.service';
 import { savePolicy, listPolicies, getPolicyById, deletePolicy } from '../../repositories/policies.repository';
 import { findUserById } from '../../repositories/users.repository';
 import { logAuditEvent } from '../../repositories/audit.repository';
+import { generatePolicyPdf } from '../../services/pdf.service';
 import { ERROR_TYPES } from '@cyberguard/shared';
 
 export const policiesRouter = Router();
@@ -79,6 +80,26 @@ policiesRouter.get('/:id', requireAuth, requireOrganisation, async (req: Request
     return;
   }
   res.status(200).json(policy);
+});
+
+// GET /api/v1/policies/:id/export/pdf — Sprint 4.3.1
+policiesRouter.get('/:id/export/pdf', requireAuth, requireOrganisation, async (req: Request, res: Response) => {
+  const { organizationId } = req.user!;
+  const id = req.params['id'] as string;
+  const policy = await getPolicyById(id, organizationId!);
+  if (!policy) {
+    res.status(404).json({ type: ERROR_TYPES.NOT_FOUND, title: 'Policy Not Found', status: 404, detail: 'Policy not found.', instance: req.path });
+    return;
+  }
+  try {
+    const pdfBuffer = await generatePolicyPdf(policy);
+    const filename = `${policy.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.status(200).send(pdfBuffer);
+  } catch (err: any) {
+    res.status(500).json({ type: '/errors/pdf-generation-failed', title: 'PDF Generation Failed', status: 500, detail: 'Failed to generate the PDF. Please try again.', instance: req.path });
+  }
 });
 
 // DELETE /api/v1/policies/:id

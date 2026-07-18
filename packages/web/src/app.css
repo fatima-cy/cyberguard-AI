@@ -1103,3 +1103,14 @@ body { background: var(--bg); color: var(--text); font-family: var(--font); min-
 @media (max-width: 768px) {
   .audit-log-card { margin: 0 1rem 1.5rem; }
 }
+/* Sprint 4.3.1 — ensure spacing between Export PDF and Copy Policy buttons */
+.policy-viewer-actions { gap: 0.6rem; }
+
+/* Fix: .copy-btn defaults to opacity:0, designed for ChatPage's hover-reveal
+   message actions (.message:hover .copy-btn). PolicyViewer and PhishingPage
+   reuse the same class outside that context, so the hover rule never fires,
+   leaving buttons permanently invisible despite rendering correctly. */
+.policy-viewer-actions .copy-btn,
+.phishing-result-actions .copy-btn {
+  opacity: 1;
+}
