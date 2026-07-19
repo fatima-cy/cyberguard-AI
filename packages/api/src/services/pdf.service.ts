@@ -1,14 +1,11 @@
 /**
  * packages/api/src/services/pdf.service.ts
  * Sprint 4.3.1 — Document Export (PDF).
- *
- * Renders a generated policy into branded HTML, then uses a headless
- * Chrome instance (puppeteer) to produce a real PDF. Chosen over pdfkit
- * specifically for visual fidelity — this is real HTML/CSS, so it can
- * actually look like a designed document rather than manually-positioned
- * text blocks. See Sprint 4.3 plan for the full library tradeoff writeup.
+ * Sprint 4.3.2 follow-up — real CloudSecure logo instead of emoji placeholder
  */
 
+import fs from 'fs';
+import path from 'path';
 import puppeteer, { type Browser } from 'puppeteer';
 import { marked } from 'marked';
 import type { GeneratedPolicy } from '@cyberguard/shared';
@@ -21,6 +18,22 @@ async function getBrowser(): Promise<Browser> {
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
   return _browser;
+}
+
+let _logoDataUri: string | null = null;
+function getLogoDataUri(): string {
+  if (_logoDataUri) return _logoDataUri;
+  // NOTE: works correctly in dev (ts-node runs directly from src/, so
+  // __dirname resolves to src/services and ../assets to src/assets). Will
+  // break on a real production build — tsc compiles .ts to dist/ but does
+  // NOT copy non-.ts assets like this PNG, so dist/assets/ won't exist.
+  // Needs a build-script asset-copy step (or bundling the logo as a base64
+  // constant instead of a file read) — flagged for Sprint 4.5 (Azure
+  // Production), not fixed now since dev mode is all that exists today.
+  const logoPath = path.join(__dirname, '../assets/cloudsecure-logo.png');
+  const buffer = fs.readFileSync(logoPath);
+  _logoDataUri = `data:image/png;base64,${buffer.toString('base64')}`;
+  return _logoDataUri;
 }
 
 function extractTableOfContents(markdown: string): { level: number; text: string }[] {
@@ -39,6 +52,7 @@ function buildHtml(policy: GeneratedPolicy): string {
   const bodyHtml = marked.parse(policy.content, { async: false }) as string;
   const toc = extractTableOfContents(policy.content);
   const generatedDate = new Date(policy.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const logoDataUri = getLogoDataUri();
 
   const tocHtml = toc.map(item =>
     `<div class="toc-item toc-level-${item.level}">${item.text}</div>`
@@ -68,7 +82,9 @@ function buildHtml(policy: GeneratedPolicy): string {
     page-break-after: always;
     padding: 0 60px;
   }
-  .cover-logo { font-size: 20pt; font-weight: 700; color: #0d1424; margin-bottom: 48px; }
+  .cover-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 48px; }
+  .cover-logo img { height: 32px; width: auto; }
+  .cover-logo span { font-size: 16pt; font-weight: 700; color: #0d1424; }
   .cover-title { font-size: 28pt; font-weight: 700; color: #0d1424; margin: 0 0 12px; max-width: 480px; }
   .cover-subtitle { font-size: 13pt; color: #64748b; margin: 0 0 32px; }
   .cover-meta { font-size: 10pt; color: #94a3b8; }
@@ -91,7 +107,7 @@ function buildHtml(policy: GeneratedPolicy): string {
 </head>
 <body>
   <div class="cover">
-    <div class="cover-logo">🛡️ CyberGuard AI</div>
+    <div class="cover-logo"><img src="${logoDataUri}" alt="CloudSecure" /><span>CyberGuard AI</span></div>
     <div class="cover-title">${policy.title}</div>
     <div class="cover-subtitle">Generated for ${policy.orgContext.organizationName}</div>
     <div class="cover-meta">Generated on ${generatedDate}</div>

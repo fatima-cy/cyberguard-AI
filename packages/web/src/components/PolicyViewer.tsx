@@ -17,10 +17,14 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-// Sprint 4.3.1 — PDF export. Uses fetch (not a plain <a href>) because the
-// endpoint requires an Authorization header, which a direct link can't
-// send — so we fetch the PDF as a blob and trigger the download manually.
-function ExportPdfButton({ policyId, policyTitle }: { policyId: string; policyTitle: string }) {
+// Sprint 4.3.1/4.3.2 — Export buttons. Uses fetch (not a plain <a href>)
+// because these endpoints require an Authorization header, which a direct
+// link can't send — so we fetch the file as a blob and trigger the
+// download manually. Shared between PDF and DOCX since the logic is
+// identical apart from the URL/filename extension/label.
+function ExportButton({ policyId, policyTitle, format, label, icon }: {
+  policyId: string; policyTitle: string; format: 'pdf' | 'docx'; label: string; icon: string;
+}) {
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
 
@@ -29,7 +33,7 @@ function ExportPdfButton({ policyId, policyTitle }: { policyId: string; policyTi
     setError('');
     try {
       const token = getAccessToken();
-      const response = await fetch(`/api/v1/policies/${policyId}/export/pdf`, {
+      const response = await fetch(`/api/v1/policies/${policyId}/export/${format}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!response.ok) throw new Error('Export failed');
@@ -37,7 +41,7 @@ function ExportPdfButton({ policyId, policyTitle }: { policyId: string; policyTi
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${policyTitle.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.pdf`;
+      a.download = `${policyTitle.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.${format}`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -51,8 +55,8 @@ function ExportPdfButton({ policyId, policyTitle }: { policyId: string; policyTi
 
   return (
     <>
-      <button className="copy-btn" onClick={handleExport} disabled={exporting} title="Download as PDF">
-        {exporting ? 'Exporting…' : '📄 Export PDF'}
+      <button className="copy-btn" onClick={handleExport} disabled={exporting} title={`Download as ${format.toUpperCase()}`}>
+        {exporting ? 'Exporting…' : `${icon} ${label}`}
       </button>
       {error && <span className="chat-error" style={{ marginLeft: '0.5rem' }}>{error}</span>}
     </>
@@ -71,7 +75,8 @@ export function PolicyViewer({ policy }: { policy: GeneratedPolicy }) {
       </div>
       <CitationBlock sources={policy.sources} label="Grounded in" />
       <div className="policy-viewer-actions">
-        <ExportPdfButton policyId={policy.id} policyTitle={policy.title} />
+        <ExportButton policyId={policy.id} policyTitle={policy.title} format="pdf" label="Export PDF" icon="📄" />
+        <ExportButton policyId={policy.id} policyTitle={policy.title} format="docx" label="Export Word" icon="📝" />
         <CopyButton text={policy.content} />
       </div>
     </div>
