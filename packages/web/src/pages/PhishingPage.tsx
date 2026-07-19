@@ -5,6 +5,7 @@ import { Layout } from '../components/Layout';
 import { RiskScoreGauge } from '../components/RiskScoreGauge';
 import { CitationBlock } from '../components/CitationBlock';
 import { LoadingIndicator } from '../components/LoadingIndicator';
+import { getAccessToken } from '../api/client';
 import type { PhishingAnalysis, PhishingAnalysisInput } from '@cyberguard/shared';
 
 const ANALYSIS_LOADING_MESSAGES = [
@@ -26,6 +27,48 @@ function CopyButton({ text }: { text: string }) {
     <button className={`copy-btn ${copied ? 'copied' : ''}`} onClick={handleCopy} title="Copy report">
       {copied ? '✓ Copied' : 'Copy Report'}
     </button>
+  );
+}
+
+// Sprint 4.3.3 — export buttons, same fetch-as-blob pattern as PolicyViewer's.
+function ExportButton({ analysisId, format, label, icon }: {
+  analysisId: string; format: 'pdf' | 'docx'; label: string; icon: string;
+}) {
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleExport() {
+    setExporting(true);
+    setError('');
+    try {
+      const token = getAccessToken();
+      const response = await fetch(`/api/v1/phishing/analyses/${analysisId}/export/${format}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) throw new Error('Export failed');
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `phishing-analysis-${analysisId.slice(0, 8)}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError('Export failed. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  return (
+    <>
+      <button className="copy-btn" onClick={handleExport} disabled={exporting} title={`Download as ${format.toUpperCase()}`}>
+        {exporting ? 'Exporting…' : `${icon} ${label}`}
+      </button>
+      {error && <span className="chat-error" style={{ marginLeft: '0.5rem' }}>{error}</span>}
+    </>
   );
 }
 
@@ -99,6 +142,8 @@ function ResultCard({ analysis }: { analysis: PhishingAnalysis }) {
       <CitationBlock sources={analysis.sources} />
 
       <div className="phishing-result-actions">
+        <ExportButton analysisId={analysis.id} format="pdf" label="Export PDF" icon="📄" />
+        <ExportButton analysisId={analysis.id} format="docx" label="Export Word" icon="📝" />
         <CopyButton text={analysisToPlainText(analysis)} />
       </div>
     </div>

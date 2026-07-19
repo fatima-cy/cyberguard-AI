@@ -11,7 +11,7 @@ import path from 'path';
 import {
   Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, PageNumber, Header, Footer, ImageRun,
 } from 'docx';
-import type { GeneratedPolicy } from '@cyberguard/shared';
+import type { GeneratedPolicy, PhishingAnalysis } from '@cyberguard/shared';
 
 let _logoBuffer: Buffer | null = null;
 function getLogoBuffer(): Buffer {
@@ -99,6 +99,85 @@ export async function generatePolicyDocx(policy: GeneratedPolicy): Promise<Buffe
         new Paragraph({ text: policy.title, heading: HeadingLevel.TITLE, spacing: { after: 60 } }),
         new Paragraph({ children: [new TextRun({ text: `Generated for ${policy.orgContext.organizationName} on ${generatedDate}`, italics: true, color: '64748B' })], spacing: { after: 300 } }),
         ...markdownToParagraphs(policy.content),
+      ],
+    }],
+  });
+
+  return Packer.toBuffer(doc);
+}
+
+// ─── Phishing Report Export (Sprint 4.3.3) ────────────────────────────────────
+
+export async function generatePhishingReportDocx(analysis: PhishingAnalysis): Promise<Buffer> {
+  const generatedDate = new Date(analysis.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+  const logoBuffer = getLogoBuffer();
+
+  const indicatorParagraphs = analysis.indicators.flatMap(ind => [
+    new Paragraph({
+      children: [
+        new TextRun({ text: `${ind.type}: `, bold: true }),
+        new TextRun({ text: ind.value }),
+        new TextRun({ text: `  [${ind.severity}]`, bold: true, color: ind.severity === 'HIGH' ? 'F97316' : ind.severity === 'MEDIUM' ? 'EAB308' : '64748B' }),
+      ],
+      spacing: { before: 100 },
+    }),
+    new Paragraph({ children: [new TextRun({ text: ind.description, color: '64748B' })], spacing: { after: 80 } }),
+  ]);
+
+  const actionParagraphs = analysis.recommendedActions.map(a =>
+    new Paragraph({ children: [new TextRun({ text: a })], bullet: { level: 0 }, spacing: { after: 60 } }),
+  );
+
+  const doc = new Document({
+    sections: [{
+      properties: {},
+      headers: {
+        default: new Header({
+          children: [new Paragraph({
+            alignment: AlignmentType.RIGHT,
+            children: [
+              new ImageRun({ data: logoBuffer, transformation: { width: 63, height: 40 }, type: 'png' }),
+              new TextRun({ text: '  CyberGuard AI', bold: true, size: 18 }),
+            ],
+          })],
+        }),
+      },
+      footers: {
+        default: new Footer({
+          children: [new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: [
+              new TextRun({ children: [PageNumber.CURRENT], size: 16 }),
+              new TextRun({ text: ' / ', size: 16 }),
+              new TextRun({ children: [PageNumber.TOTAL_PAGES], size: 16 }),
+            ],
+          })],
+        }),
+      },
+      children: [
+        new Paragraph({ text: 'Phishing Analysis Report', heading: HeadingLevel.TITLE, spacing: { after: 60 } }),
+        new Paragraph({
+          children: [
+            new TextRun({ text: `${analysis.riskLevel}  `, bold: true, size: 28 }),
+            new TextRun({ text: `Risk Score: ${analysis.riskScore} / 100`, color: '64748B' }),
+          ],
+          spacing: { after: 120 },
+        }),
+        new Paragraph({ children: [new TextRun({ text: analysis.verdict, bold: true })], spacing: { after: 240 } }),
+
+        new Paragraph({ text: 'Executive Summary', heading: HeadingLevel.HEADING_2, spacing: { before: 120, after: 80 } }),
+        new Paragraph({ children: [new TextRun({ text: analysis.executiveSummary })], spacing: { after: 200 } }),
+
+        new Paragraph({ text: 'Technical Summary', heading: HeadingLevel.HEADING_2, spacing: { before: 120, after: 80 } }),
+        new Paragraph({ children: [new TextRun({ text: analysis.technicalSummary })], spacing: { after: 200 } }),
+
+        new Paragraph({ text: 'Indicators of Compromise', heading: HeadingLevel.HEADING_2, spacing: { before: 120, after: 80 } }),
+        ...(indicatorParagraphs.length > 0 ? indicatorParagraphs : [new Paragraph({ text: 'No specific indicators detected.' })]),
+
+        new Paragraph({ text: 'Recommended Actions', heading: HeadingLevel.HEADING_2, spacing: { before: 200, after: 80 } }),
+        ...actionParagraphs,
+
+        new Paragraph({ children: [new TextRun({ text: `Generated on ${generatedDate}`, italics: true, size: 16, color: '94A3B8' })], spacing: { before: 300 } }),
       ],
     }],
   });

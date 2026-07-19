@@ -13,6 +13,9 @@ import { analyzePhishing } from './phishing.service';
 import { saveAnalysis, listAnalyses } from '../../repositories/phishing.repository';
 import { findUserById } from '../../repositories/users.repository';
 import { logAuditEvent } from '../../repositories/audit.repository';
+import { generatePhishingReportPdf } from '../../services/pdf.service';
+import { generatePhishingReportDocx } from '../../services/docx.service';
+import { getAnalysisById } from '../../repositories/phishing.repository';
 import { ERROR_TYPES } from '@cyberguard/shared';
 
 export const phishingRouter = Router();
@@ -62,4 +65,40 @@ phishingRouter.get('/analyses', requireAuth, requireOrganisation, validateQuery(
   const { page, limit } = req.query as any;
   const analyses = await listAnalyses(organizationId!, Number(page), Number(limit));
   res.status(200).json({ analyses, page: Number(page), limit: Number(limit) });
+});
+
+// GET /api/v1/phishing/analyses/:id/export/pdf — Sprint 4.3.3
+phishingRouter.get('/analyses/:id/export/pdf', requireAuth, requireOrganisation, async (req: Request, res: Response) => {
+  const { organizationId } = req.user!;
+  const analysis = await getAnalysisById(req.params.id, organizationId!);
+  if (!analysis) {
+    res.status(404).json({ type: ERROR_TYPES.NOT_FOUND, title: 'Analysis Not Found', status: 404, detail: 'Analysis not found.', instance: req.path });
+    return;
+  }
+  try {
+    const pdfBuffer = await generatePhishingReportPdf(analysis);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="phishing-analysis-${analysis.id.slice(0, 8)}.pdf"`);
+    res.status(200).send(pdfBuffer);
+  } catch (err: any) {
+    res.status(500).json({ type: '/errors/pdf-generation-failed', title: 'PDF Generation Failed', status: 500, detail: 'Failed to generate the PDF. Please try again.', instance: req.path });
+  }
+});
+
+// GET /api/v1/phishing/analyses/:id/export/docx — Sprint 4.3.3
+phishingRouter.get('/analyses/:id/export/docx', requireAuth, requireOrganisation, async (req: Request, res: Response) => {
+  const { organizationId } = req.user!;
+  const analysis = await getAnalysisById(req.params.id, organizationId!);
+  if (!analysis) {
+    res.status(404).json({ type: ERROR_TYPES.NOT_FOUND, title: 'Analysis Not Found', status: 404, detail: 'Analysis not found.', instance: req.path });
+    return;
+  }
+  try {
+    const docxBuffer = await generatePhishingReportDocx(analysis);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', `attachment; filename="phishing-analysis-${analysis.id.slice(0, 8)}.docx"`);
+    res.status(200).send(docxBuffer);
+  } catch (err: any) {
+    res.status(500).json({ type: '/errors/docx-generation-failed', title: 'DOCX Generation Failed', status: 500, detail: 'Failed to generate the Word document. Please try again.', instance: req.path });
+  }
 });
