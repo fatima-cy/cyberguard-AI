@@ -1,0 +1,51 @@
+name: Deploy API to Azure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/api/**'
+      - 'packages/shared/**'
+      - '.github/workflows/deploy-api.yml'
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared + api
+        run: npx turbo run build --filter=@cyberguard/api...
+
+      # The API reads its brand/logo assets via a relative path from
+      # dist/services at runtime (see pdf.service.ts / docx.service.ts), but
+      # tsc only compiles .ts files — it doesn't copy static assets into
+      # dist. Flagged as a known gap during the original manual deploy;
+      # fixed here so every future deploy carries it automatically.
+      - name: Copy static assets into dist
+        run: cp -r packages/api/src/assets packages/api/dist/assets
+
+      # Swap dev deps for a production-only install, matching exactly
+      # what the manual deploy-staging/ folder was built from.
+      - name: Install production dependencies only
+        run: |
+          rm -rf node_modules
+          npm ci --omit=dev
+
+      - name: Package deployment zip
+        run: zip -r deploy.zip . -x "*.git*" -x "*.github*"
+
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: cs-staging-api-ooraxwwtsrgie
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: deploy.zip
