@@ -36,6 +36,17 @@ import { checkRedisHealth } from './config/redis';
 // ─── Application instance ────────────────────────────────────────────────────
 const app = express();
 
+// Sprint 4.6 — Azure App Service sits the app behind exactly one reverse
+// proxy hop (the platform's own front-end), which sets X-Forwarded-For.
+// Without telling Express to trust it, express-rate-limit can't reliably
+// determine the real client IP (this was surfacing as
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR in logs) — in the worst case that
+// means the rate limiter either can't distinguish clients at all, or can
+// be bypassed by a spoofed header. `1` trusts exactly the immediate proxy
+// hop, not an unbounded chain — `true` would trust X-Forwarded-For from
+// anywhere, which is the actual security risk this exists to avoid.
+app.set('trust proxy', 1);
+
 // ─── Security middleware ──────────────────────────────────────────────────────
 app.use(
   helmet({
