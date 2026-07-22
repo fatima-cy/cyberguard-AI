@@ -137,7 +137,7 @@ export async function verifyEmail(token: string): Promise<void> {
 
   if (userDoc.emailVerified) return; // Already verified — idempotent
 
-  const partitionKey = userDoc.organizationId ?? userDoc.id;
+  const partitionKey = userDoc.organizationId; // Sprint 4.5.3 bug fix — see git history for full explanation; never fall back to userDoc.id, Cosmos partitions this container by the literal organizationId value including null
   await updateUser(userDoc.id, partitionKey, {
     emailVerified: true,
     emailVerificationToken: undefined as any, // Remove token after use
@@ -151,7 +151,7 @@ export async function resendVerificationEmail(userId: string): Promise<void> {
   if (!userDoc || userDoc.emailVerified) return;
 
   const token = generateSecureToken();
-  const partitionKey = userDoc.organizationId ?? userDoc.id;
+  const partitionKey = userDoc.organizationId; // Sprint 4.5.3 bug fix — see git history for full explanation; never fall back to userDoc.id, Cosmos partitions this container by the literal organizationId value including null
 
   await updateUser(userDoc.id, partitionKey, { emailVerificationToken: token });
   await sendEmailVerification(userDoc.email, userDoc.name, token);
@@ -169,7 +169,7 @@ export async function requestPasswordReset(email: string): Promise<void> {
 
   const token = generateSecureToken();
   const expiry = new Date(new Date().getTime() + 60 * 60 * 1000).toISOString(); // 1 hour
-  const partitionKey = userDoc.organizationId ?? userDoc.id;
+  const partitionKey = userDoc.organizationId; // Sprint 4.5.3 bug fix — see git history for full explanation; never fall back to userDoc.id, Cosmos partitions this container by the literal organizationId value including null
 
   await updateUser(userDoc.id, partitionKey, {
     passwordResetToken: token,
@@ -202,7 +202,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
     throw err;
   }
   const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-  const partitionKey = userDoc.organizationId ?? userDoc.id;
+  const partitionKey = userDoc.organizationId; // Sprint 4.5.3 bug fix — see git history for full explanation; never fall back to userDoc.id, Cosmos partitions this container by the literal organizationId value including null
   console.log('RESET: partitionKey:', partitionKey);
   await updateUser(userDoc.id, partitionKey, {
     passwordHash,

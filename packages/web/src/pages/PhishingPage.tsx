@@ -5,7 +5,7 @@ import { Layout } from '../components/Layout';
 import { RiskScoreGauge } from '../components/RiskScoreGauge';
 import { CitationBlock } from '../components/CitationBlock';
 import { LoadingIndicator } from '../components/LoadingIndicator';
-import { getAccessToken } from '../api/client';
+import { getAccessToken, apiUrl } from '../api/client';
 import type { PhishingAnalysis, PhishingAnalysisInput } from '@cyberguard/shared';
 
 const ANALYSIS_LOADING_MESSAGES = [
@@ -42,7 +42,7 @@ function ExportButton({ analysisId, format, label, icon }: {
     setError('');
     try {
       const token = getAccessToken();
-      const response = await fetch(`/api/v1/phishing/analyses/${analysisId}/export/${format}`, {
+      const response = await fetch(apiUrl(`/api/v1/phishing/analyses/${analysisId}/export/${format}`), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!response.ok) throw new Error('Export failed');

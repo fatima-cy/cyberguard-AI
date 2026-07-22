@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { useAuth } from '../context/auth.context';
 import { dashboardApi, type DashboardSummary, type ActivityItem } from '../api/dashboard.api';
+import { organizationsApi } from '../api/organizations.api';
+import { ApiError } from '../api/client';
 import { Layout } from '../components/Layout';
 
 // ─── Security Score ───────────────────────────────────────────────────────────
@@ -141,13 +143,42 @@ export function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Sprint 4.5.3 — standalone signups reach the dashboard with no
+  // organisation yet (organizationId: null); the backend correctly 403s
+  // dashboard/summary in that case rather than silently degrading, so the
+  // frontend needs to catch that specific case and offer to create one
+  // inline instead of showing a bare "Failed to load dashboard." error.
+  const [needsOrg, setNeedsOrg] = useState(false);
+  const [orgName, setOrgName] = useState('');
+  const [orgSubmitting, setOrgSubmitting] = useState(false);
+  const [orgError, setOrgError] = useState('');
 
-  useEffect(() => {
+  function loadSummary() {
+    setLoading(true);
+    setError('');
     dashboardApi.getSummary()
-      .then(setSummary)
-      .catch(() => setError('Failed to load dashboard.'))
+      .then(summary => { setSummary(summary); setNeedsOrg(false); })
+      .catch(err => {
+        if (err instanceof ApiError && err.status === 403) {
+          setNeedsOrg(true);
+        } else {
+          setError('Failed to load dashboard.');
+        }
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }
+
+  useEffect(() => { loadSummary(); }, []);
+
+  function handleCreateOrg(e: React.FormEvent) {
+    e.preventDefault();
+    setOrgSubmitting(true);
+    setOrgError('');
+    organizationsApi.create({ name: orgName })
+      .then(() => loadSummary())
+      .catch(() => setOrgError('Could not create your organisation. Please try again.'))
+      .finally(() => setOrgSubmitting(false));
+  }
 
   function formatDate(iso: string | null): string {
     if (!iso) return 'Never';
@@ -158,7 +189,7 @@ export function DashboardPage() {
   const firstName = summary?.user.name.split(' ')[0] ?? user?.name?.split(' ')[0] ?? '';
 
   return (
-    <Layout userEmail={summary?.user.email ?? user?.email}>
+    <Layout userEmail={summary?.user.email ?? user?.email} orgName={summary?.organization.name}>
       <main className="main-panel">
         <header className="panel-header">
           <div>
@@ -170,6 +201,30 @@ export function DashboardPage() {
 
         {loading && <DashboardSkeleton />}
         {error && <div className="panel-error" style={{ padding: '2rem' }}>{error}</div>}
+
+        {needsOrg && (
+          <div className="info-card" style={{ margin: '2rem', maxWidth: 420 }}>
+            <h2>Create your organisation</h2>
+            <p className="chart-card-subtitle">You need an organisation before you can use CyberGuard AI. This only takes a moment.</p>
+            <form onSubmit={handleCreateOrg} style={{ marginTop: '1rem' }}>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Organisation name"
+                value={orgName}
+                onChange={e => setOrgName(e.target.value)}
+                minLength={2}
+                maxLength={100}
+                required
+                style={{ width: '100%', marginBottom: '1rem' }}
+              />
+              {orgError && <p className="panel-error" style={{ marginBottom: '1rem' }}>{orgError}</p>}
+              <button type="submit" className="btn btn-primary btn-full" disabled={orgSubmitting}>
+                {orgSubmitting ? 'Creating…' : 'Create organisation'}
+              </button>
+            </form>
+          </div>
+        )}
 
         {summary && (
           <>

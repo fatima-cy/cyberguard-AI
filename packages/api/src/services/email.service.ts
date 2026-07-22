@@ -77,7 +77,7 @@ export async function sendEmailVerification(
 <head><meta charset="utf-8"></head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0f1e; color: #e2e8f0; margin: 0; padding: 40px 20px;">
   <div style="max-width: 520px; margin: 0 auto; background: #111827; border: 1px solid #1e2d45; border-radius: 12px; padding: 40px;">
-    <div style="font-size: 1.5rem; font-weight: 700; margin-bottom: 24px;">🛡️ CyberGuard AI</div>
+    <div style="margin-bottom: 24px;"><img src="${config.app.baseUrl}/cloudsecure-icon.png" alt="CloudSecure" style="height: 28px; vertical-align: middle;" /> <span style="font-size: 1.25rem; font-weight: 700; vertical-align: middle;">CyberGuard AI</span></div>
     <h1 style="font-size: 1.25rem; margin: 0 0 12px;">Verify your email address</h1>
     <p style="color: #64748b; margin: 0 0 24px;">Hi ${name}, click the button below to verify your email and activate your account.</p>
     <a href="${verifyUrl}" style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Verify email address</a>
@@ -109,7 +109,7 @@ export async function sendPasswordReset(
 <head><meta charset="utf-8"></head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0f1e; color: #e2e8f0; margin: 0; padding: 40px 20px;">
   <div style="max-width: 520px; margin: 0 auto; background: #111827; border: 1px solid #1e2d45; border-radius: 12px; padding: 40px;">
-    <div style="font-size: 1.5rem; font-weight: 700; margin-bottom: 24px;">🛡️ CyberGuard AI</div>
+    <div style="margin-bottom: 24px;"><img src="${config.app.baseUrl}/cloudsecure-icon.png" alt="CloudSecure" style="height: 28px; vertical-align: middle;" /> <span style="font-size: 1.25rem; font-weight: 700; vertical-align: middle;">CyberGuard AI</span></div>
     <h1 style="font-size: 1.25rem; margin: 0 0 12px;">Reset your password</h1>
     <p style="color: #64748b; margin: 0 0 24px;">Hi ${name}, click the button below to set a new password. This link expires in 1 hour.</p>
     <a href="${resetUrl}" style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Reset password</a>
@@ -142,7 +142,7 @@ export async function sendInvitationEmail(
 <head><meta charset="utf-8"></head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0f1e; color: #e2e8f0; margin: 0; padding: 40px 20px;">
   <div style="max-width: 520px; margin: 0 auto; background: #111827; border: 1px solid #1e2d45; border-radius: 12px; padding: 40px;">
-    <div style="font-size: 1.5rem; font-weight: 700; margin-bottom: 24px;">🛡️ CyberGuard AI</div>
+    <div style="margin-bottom: 24px;"><img src="${config.app.baseUrl}/cloudsecure-icon.png" alt="CloudSecure" style="height: 28px; vertical-align: middle;" /> <span style="font-size: 1.25rem; font-weight: 700; vertical-align: middle;">CyberGuard AI</span></div>
     <h1 style="font-size: 1.25rem; margin: 0 0 12px;">You've been invited to join ${organizationName}</h1>
     <p style="color: #64748b; margin: 0 0 24px;">${inviterName} has invited you to collaborate on ${organizationName}'s CyberGuard AI workspace — AI-grounded threat analysis, phishing detection, and security policy generation.</p>
     <a href="${acceptUrl}" style="display: inline-block; background: #3b82f6; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Accept invitation</a>

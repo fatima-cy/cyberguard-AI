@@ -13,6 +13,18 @@ export default defineConfig({
   optimizeDeps: {
     include: ['@cyberguard/shared'],
   },
+  // Sprint 4.5.3 — the production build (`vite build`) doesn't go through
+  // optimizeDeps at all (that's dev-server-only); it uses Rollup's own
+  // commonjs plugin instead, which by default only reliably auto-detects
+  // real node_modules/** packages — not this kind of npm-workspace package,
+  // where the require()/module.exports actually reaches the browser bundle
+  // unconverted, causing "require is not defined" at runtime. This explicit
+  // include is the same fix as optimizeDeps above, just for the build path.
+  build: {
+    commonjsOptions: {
+      include: [/shared/, /node_modules/],
+    },
+  },
   server: {
     port: 5173,
     proxy: {

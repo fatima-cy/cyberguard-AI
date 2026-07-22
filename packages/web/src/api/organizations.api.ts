@@ -11,6 +11,12 @@ export interface InvitationLookup {
 export const organizationsApi = {
   get: () => api.get<{ organization: Organisation }>('/api/v1/organizations'),
 
+  // Sprint 4.5.3 — standalone (non-invited) signups have organizationId:
+  // null until they create their own org; only `name` is required, every
+  // other field on the backend schema has a sensible default.
+  create: (data: { name: string; country?: string; industry?: string; timezone?: string }) =>
+    api.post<{ organization: Organisation }>('/api/v1/organizations', data),
+
   update: (data: { name?: string; country?: string; industry?: string; timezone?: string }) =>
     api.patch<{ organization: Organisation }>('/api/v1/organizations', data),
 

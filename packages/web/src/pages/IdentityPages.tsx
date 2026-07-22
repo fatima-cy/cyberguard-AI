@@ -151,20 +151,38 @@ export function VerifyEmailPage() {
   const navigate = useNavigate();
   const token = searchParams.get('token') ?? '';
 
-  const [status, setStatus] = useState<'verifying' | 'success' | 'error'>('verifying');
+  // Sprint 4.5.3 — deliberately does NOT auto-fire on mount. Email
+  // link-scanners (Gmail's security scanning, Safari Link Preview,
+  // corporate mail proxies) pre-visit URLs found in emails before the
+  // recipient ever sees them — if verification fired automatically on
+  // page load, that scan alone would silently consume the one-time token,
+  // so every real click by the actual user would then fail with "invalid
+  // or expired" even on a token that's genuinely fresh. Requiring an
+  // explicit click means only real human interaction consumes it —
+  // scanners load the page but don't click buttons.
+  const [status, setStatus] = useState<'idle' | 'verifying' | 'success' | 'error'>(token ? 'idle' : 'error');
 
-  useEffect(() => {
-    if (!token) { setStatus('error'); return; }
-
+  function handleVerify() {
+    setStatus('verifying');
     api.post('/api/v1/auth/verify-email', { token })
       .then(() => setStatus('success'))
       .catch(() => setStatus('error'));
-  }, [token]);
+  }
 
   return (
     <div className="auth-page">
       <div className="auth-card" style={{ textAlign: 'center' }}>
         <div className="auth-logo"><img src="/cloudsecure-icon.png" alt="CloudSecure" className="auth-logo-mark" /> CyberGuard AI</div>
+
+        {status === 'idle' && (
+          <>
+            <h1 className="auth-title">Verify your email</h1>
+            <p className="auth-subtitle">Click below to confirm your email address and activate your account.</p>
+            <button className="btn btn-primary btn-full" style={{ marginTop: '1.5rem' }} onClick={handleVerify}>
+              Verify email address
+            </button>
+          </>
+        )}
 
         {status === 'verifying' && (
           <>
@@ -177,13 +195,19 @@ export function VerifyEmailPage() {
           <>
             <div style={{ fontSize: '3rem', margin: '1rem 0' }}>✅</div>
             <h1 className="auth-title">Email verified!</h1>
-            <p className="auth-subtitle">Your email address has been confirmed.</p>
+            {/* Sprint 4.5.3 — this page is usually opened from an email
+                link, which is a fresh browser tab with no access token in
+                memory (tokens are deliberately never persisted to storage).
+                Sending straight to /dashboard here would hit the API with
+                no auth at all, so this sends to /login instead — a real
+                signed-in session, not just a client-side route change. */}
+            <p className="auth-subtitle">Your email address has been confirmed. Sign in to continue.</p>
             <button
               className="btn btn-primary btn-full"
               style={{ marginTop: '1.5rem' }}
-              onClick={() => navigate('/dashboard', { replace: true })}
+              onClick={() => navigate('/login', { replace: true })}
             >
-              Go to dashboard →
+              Sign in →
             </button>
           </>
         )}

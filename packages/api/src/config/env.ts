@@ -48,7 +48,19 @@ export const config = {
     refreshCookieOptions: {
       httpOnly: true,
       secure: isProduction,
-      sameSite: (isProduction ? 'strict' : 'lax') as 'strict' | 'lax',
+      // Sprint 4.5.3 bug fix — the frontend (Azure Static Web Apps) and API
+      // (Azure App Service) are genuinely different domains in this
+      // deployment, making every request between them cross-site.
+      // SameSite=Strict cookies are never attached to cross-site requests
+      // under any circumstances, so the refresh cookie was being set
+      // correctly on login/register (a same-origin response) but silently
+      // never sent back on the next request that actually needed it — the
+      // browser just omits it, no error. This was never caught in earlier
+      // dev/local testing because frontend and API ran same-site there
+      // (Vite's dev proxy), where Strict is harmless. SameSite=None is the
+      // correct setting for genuinely cross-site cookies, and requires
+      // Secure (already true in production) or browsers reject it outright.
+      sameSite: (isProduction ? 'none' : 'lax') as 'strict' | 'lax' | 'none',
       path: '/api/v1/auth',
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },

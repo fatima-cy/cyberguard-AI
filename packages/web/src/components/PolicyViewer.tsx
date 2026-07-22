@@ -2,7 +2,7 @@ import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { CitationBlock } from './CitationBlock';
-import { getAccessToken } from '../api/client';
+import { getAccessToken, apiUrl } from '../api/client';
 import type { GeneratedPolicy } from '@cyberguard/shared';
 
 function CopyButton({ text }: { text: string }) {
@@ -33,7 +33,7 @@ function ExportButton({ policyId, policyTitle, format, label, icon }: {
     setError('');
     try {
       const token = getAccessToken();
-      const response = await fetch(`/api/v1/policies/${policyId}/export/${format}`, {
+      const response = await fetch(apiUrl(`/api/v1/policies/${policyId}/export/${format}`), {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!response.ok) throw new Error('Export failed');

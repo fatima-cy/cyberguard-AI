@@ -17,9 +17,10 @@ interface LayoutProps {
   children: ReactNode;
   sidebar?: ReactNode; // Extra sidebar content (session list, etc.)
   userEmail?: string;
+  orgName?: string;
 }
 
-export function Layout({ children, sidebar, userEmail }: LayoutProps) {
+export function Layout({ children, sidebar, userEmail, orgName }: LayoutProps) {
   const { logout } = useAuth();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -60,6 +61,7 @@ export function Layout({ children, sidebar, userEmail }: LayoutProps) {
           <img src="/cloudsecure-icon.png" alt="CloudSecure" className="sidebar-logo-mark" />
           CyberGuard AI
         </div>
+        {orgName && <div className="sidebar-org-name">{orgName}</div>}
 
         <div className="sidebar-nav-group">
           <ul className="sidebar-nav">

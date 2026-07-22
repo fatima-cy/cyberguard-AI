@@ -98,8 +98,22 @@ export async function updateUser(
     const { _rid, _self, _etag, _attachments, _ts, ...clean } = existing as any;
     await container(CONTAINER).items.create<UserDocument>({ ...clean, ...updates, updatedAt: new Date().toISOString() });
   } else {
+    // Sprint 4.5.3 bug fix — a key with value `undefined` (e.g.
+    // emailVerificationToken: undefined, meant to clear the token after
+    // use) survives Object.entries() as a real entry, but JSON.stringify
+    // silently drops any key whose value is undefined when the Cosmos SDK
+    // serializes the patch body — producing a 'set' operation with no
+    // `value` field at all, which Cosmos rejects outright ("The required
+    // property 'value' could not be found in patch request"). JSON Patch
+    // has a proper operation for removing a field — `remove` — which
+    // doesn't need a value, so undefined now maps to that instead of a
+    // malformed `set`.
     const operations = Object.entries({ ...updates, updatedAt: new Date().toISOString() })
-      .map(([key, value]) => ({ op: 'set' as const, path: `/${key}`, value }));
+      .map(([key, value]) =>
+        value === undefined
+          ? { op: 'remove' as const, path: `/${key}` }
+          : { op: 'set' as const, path: `/${key}`, value },
+      );
     await container(CONTAINER).item(userId, currentPartitionKey).patch(operations);
   }
 }

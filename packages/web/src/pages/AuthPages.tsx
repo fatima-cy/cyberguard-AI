@@ -81,7 +81,7 @@ export function LoginPage() {
 
 // ─── RegisterPage ─────────────────────────────────────────────────────────────
 
-type RegisterStep = 'account' | 'organization';
+type RegisterStep = 'account' | 'organization' | 'verify-pending';
 
 export function RegisterPage() {
   const { register, createOrganization } = useAuth();
@@ -125,7 +125,12 @@ export function RegisterPage() {
         // step entirely and go straight in.
         navigate('/dashboard', { replace: true });
       } else {
-        setStep('organization');
+        // Sprint 4.5.3 — standalone registrations now wait for email
+        // verification before creating a workspace, instead of letting an
+        // unverified account go straight into org creation and the
+        // dashboard. Org creation still happens (via the dashboard's own
+        // create-org prompt) once the user has verified and signed in.
+        setStep('verify-pending');
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Registration failed. Please try again.');
@@ -171,7 +176,18 @@ export function RegisterPage() {
       <div className="auth-card">
         <div className="auth-logo"><img src="/cloudsecure-icon.png" alt="CloudSecure" className="auth-logo-mark" /> CyberGuard AI</div>
 
-        {step === 'account' ? (
+        {step === 'verify-pending' ? (
+          <>
+            <h1 className="auth-title">Check your email</h1>
+            <div className="auth-info">📧 A verification email has been sent to <strong>{email}</strong></div>
+            <p className="auth-subtitle" style={{ marginTop: '1rem' }}>
+              Verify your email, then sign in to create your organisation and get started.
+            </p>
+            <Link to="/login" className="btn btn-primary btn-full" style={{ marginTop: '1.5rem', textAlign: 'center' }}>
+              Go to sign in →
+            </Link>
+          </>
+        ) : step === 'account' ? (
           <>
             <h1 className="auth-title">Create account</h1>
 
