@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@cyberguard/shared": "*",
+    "@opentelemetry/core": "2.10.0",
+    "@opentelemetry/sdk-node": "0.221.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
@@ -23,6 +25,6 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "typescript": "^5.4.5",
-    "vite": "^5.3.1"
+    "vite": "^5.4.21"
   }
 }
