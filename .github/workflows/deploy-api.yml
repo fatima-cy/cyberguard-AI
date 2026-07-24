@@ -40,6 +40,20 @@ jobs:
           rm -rf node_modules
           npm ci --omit=dev
 
+      # PDF export (pdf.service.ts) launches a real headless Chrome via
+      # Puppeteer. Puppeteer's own postinstall download normally handles
+      # this, but its default cache lives outside the repo entirely (e.g.
+      # /root/.cache/puppeteer on a dev machine) — a location that was
+      # never actually included in the deployed zip, so the API had
+      # Puppeteer's code but no browser to launch it with. Installing
+      # explicitly into a repo-relative folder means the binary ships as
+      # part of the deployment itself. PUPPETEER_CACHE_DIR must match the
+      # App Setting of the same name on the App Service at runtime.
+      - name: Install Chrome for Puppeteer
+        env:
+          PUPPETEER_CACHE_DIR: ${{ github.workspace }}/.cache/puppeteer
+        run: npx puppeteer browsers install chrome
+
       - name: Package deployment zip
         run: zip -r deploy.zip . -x "*.git*" -x "*.github*"
 
