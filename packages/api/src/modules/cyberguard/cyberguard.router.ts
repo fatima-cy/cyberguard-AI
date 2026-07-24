@@ -16,6 +16,18 @@
 
 import { Router, type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
+
+// Sprint 4.6 — see app.ts for the full explanation: express-rate-limit
+// v7.5.1 throws on a client IP with a port suffix attached, which
+// Cloudflare occasionally sends. Local equivalent of the v8+
+// ipKeyGenerator helper.
+function normalizeIpForRateLimit(ip: string): string {
+  const bracketed = ip.match(/^\[(.+)\]:\d+$/);
+  if (bracketed) return bracketed[1];
+  const ipv4WithPort = ip.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d+$/);
+  if (ipv4WithPort) return ipv4WithPort[1];
+  return ip;
+}
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { validate, validateQuery, paginationSchema } from '../../middleware/validate.middleware';
@@ -45,7 +57,7 @@ const aiRateLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.user?.userId ?? req.ip ?? 'unknown',
+  keyGenerator: (req) => req.user?.userId ?? normalizeIpForRateLimit(req.ip ?? 'unknown'),
   message: {
     type: ERROR_TYPES.RATE_LIMIT_EXCEEDED,
     title: 'Too Many Requests',

@@ -4,7 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useAuth } from '../context/auth.context';
 import { chatApi } from '../api/dashboard.api';
-import { getAccessToken } from '../api/client';
+import { getAccessToken, apiUrl } from '../api/client';
 import { Layout } from '../components/Layout';
 import { CitationBlock } from '../components/CitationBlock';
 import type { ChatSession, ChatSource } from '@cyberguard/shared';
@@ -173,7 +173,7 @@ export function ChatPage() {
 
     try {
       const token = getAccessToken();
-      const response = await fetch('/api/v1/cyberguard/chat/stream', {
+      const response = await fetch(apiUrl('/api/v1/cyberguard/chat/stream'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         credentials: 'include',

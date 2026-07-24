@@ -25,6 +25,22 @@ import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
+
+// Sprint 4.6 — express-rate-limit@7.5.1 (installed here) validates its
+// default rate-limit key strictly as a bare IPv4/IPv6 address and throws
+// (ERR_ERL_INVALID_IP_ADDRESS) on anything else. Cloudflare, sitting in
+// front of the custom domain, occasionally forwards a client IP with a
+// port suffix attached (e.g. "98.97.76.0:8764" or "[::1]:8080") rather
+// than a bare address — this strips that suffix so the limiter gets a
+// clean key. (The library's own ipKeyGenerator helper that does this
+// isn't available until v8+, so this is a local equivalent.)
+function normalizeIpForRateLimit(ip: string): string {
+  const bracketed = ip.match(/^\[(.+)\]:\d+$/);
+  if (bracketed) return bracketed[1];
+  const ipv4WithPort = ip.match(/^(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}):\d+$/);
+  if (ipv4WithPort) return ipv4WithPort[1];
+  return ip;
+}
 import { config } from './config/env';
 import { correlationMiddleware } from './core/observability/telemetry';
 import { logger } from './core/observability/logger';
@@ -110,6 +126,14 @@ const generalLimiter = rateLimit({
     detail: 'You have exceeded the request rate limit. Please try again in a moment.',
   },
   skip: () => config.app.isTest,
+  // Sprint 4.6 — the custom domain now sits behind Cloudflare, which
+  // occasionally forwards a client IP with a port suffix attached (e.g.
+  // "98.97.76.0:8764") rather than a bare IP. express-rate-limit's default
+  // key generator validates req.ip strictly as IPv4/IPv6 and throws on
+  // anything else (ERR_ERL_INVALID_IP_ADDRESS), crashing the request. Their
+  // own ipKeyGenerator helper normalizes this correctly instead of relying
+  // on the raw value.
+  keyGenerator: (req) => normalizeIpForRateLimit(req.ip ?? 'unknown'),
 });
 app.use('/api/', generalLimiter);
 
