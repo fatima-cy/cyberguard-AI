@@ -14,6 +14,7 @@ import { findUserById } from '../../repositories/users.repository';
 import { logAuditEvent } from '../../repositories/audit.repository';
 import { generatePolicyPdf } from '../../services/pdf.service';
 import { generatePolicyDocx } from '../../services/docx.service';
+import { logger } from '../../core/observability/logger';
 import { ERROR_TYPES } from '@cyberguard/shared';
 
 export const policiesRouter = Router();
@@ -99,6 +100,7 @@ policiesRouter.get('/:id/export/pdf', requireAuth, requireOrganisation, async (r
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.status(200).send(pdfBuffer);
   } catch (err: any) {
+    logger.error('Policy PDF export failed', { error: err.message, stack: err.stack });
     res.status(500).json({ type: '/errors/pdf-generation-failed', title: 'PDF Generation Failed', status: 500, detail: 'Failed to generate the PDF. Please try again.', instance: req.path });
   }
 });
@@ -119,6 +121,7 @@ policiesRouter.get('/:id/export/docx', requireAuth, requireOrganisation, async (
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.status(200).send(docxBuffer);
   } catch (err: any) {
+    logger.error('Policy DOCX export failed', { error: err.message, stack: err.stack });
     res.status(500).json({ type: '/errors/docx-generation-failed', title: 'DOCX Generation Failed', status: 500, detail: 'Failed to generate the Word document. Please try again.', instance: req.path });
   }
 });

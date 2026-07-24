@@ -16,6 +16,7 @@ import { logAuditEvent } from '../../repositories/audit.repository';
 import { generatePhishingReportPdf } from '../../services/pdf.service';
 import { generatePhishingReportDocx } from '../../services/docx.service';
 import { getAnalysisById } from '../../repositories/phishing.repository';
+import { logger } from '../../core/observability/logger';
 import { ERROR_TYPES } from '@cyberguard/shared';
 
 export const phishingRouter = Router();
@@ -81,6 +82,7 @@ phishingRouter.get('/analyses/:id/export/pdf', requireAuth, requireOrganisation,
     res.setHeader('Content-Disposition', `attachment; filename="phishing-analysis-${analysis.id.slice(0, 8)}.pdf"`);
     res.status(200).send(pdfBuffer);
   } catch (err: any) {
+    logger.error('Phishing report PDF export failed', { error: err.message, stack: err.stack });
     res.status(500).json({ type: '/errors/pdf-generation-failed', title: 'PDF Generation Failed', status: 500, detail: 'Failed to generate the PDF. Please try again.', instance: req.path });
   }
 });
@@ -99,6 +101,7 @@ phishingRouter.get('/analyses/:id/export/docx', requireAuth, requireOrganisation
     res.setHeader('Content-Disposition', `attachment; filename="phishing-analysis-${analysis.id.slice(0, 8)}.docx"`);
     res.status(200).send(docxBuffer);
   } catch (err: any) {
+    logger.error('Phishing report DOCX export failed', { error: err.message, stack: err.stack });
     res.status(500).json({ type: '/errors/docx-generation-failed', title: 'DOCX Generation Failed', status: 500, detail: 'Failed to generate the Word document. Please try again.', instance: req.path });
   }
 });
