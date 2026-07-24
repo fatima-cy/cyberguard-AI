@@ -100,7 +100,7 @@ policiesRouter.get('/:id/export/pdf', requireAuth, requireOrganisation, async (r
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.status(200).send(pdfBuffer);
   } catch (err: any) {
-    logger.error('Policy PDF export failed', { error: err.message, stack: err.stack });
+    logger.error(`Policy PDF export failed: ${err.message}`);
     res.status(500).json({ type: '/errors/pdf-generation-failed', title: 'PDF Generation Failed', status: 500, detail: 'Failed to generate the PDF. Please try again.', instance: req.path });
   }
 });

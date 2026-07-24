@@ -82,7 +82,7 @@ phishingRouter.get('/analyses/:id/export/pdf', requireAuth, requireOrganisation,
     res.setHeader('Content-Disposition', `attachment; filename="phishing-analysis-${analysis.id.slice(0, 8)}.pdf"`);
     res.status(200).send(pdfBuffer);
   } catch (err: any) {
-    logger.error('Phishing report PDF export failed', { error: err.message, stack: err.stack });
+    logger.error(`Phishing report PDF export failed: ${err.message}`);
     res.status(500).json({ type: '/errors/pdf-generation-failed', title: 'PDF Generation Failed', status: 500, detail: 'Failed to generate the PDF. Please try again.', instance: req.path });
   }
 });
